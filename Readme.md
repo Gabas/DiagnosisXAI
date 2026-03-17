@@ -1,0 +1,148 @@
+# 🎗️ XAI para Diagnóstico Preditivo de Câncer de Mama
+
+> **Trabalho de Conclusão de Curso — Bacharelado em Ciência da Computação**
+> Universidade Tuiuti do Paraná · 2026
+
+Software com Inteligência Artificial Explicável (XAI) para apoio ao diagnóstico preditivo de câncer de mama, integrando modelos de Machine Learning com SHAP e UMAP sobre a base pública *Breast Cancer Wisconsin (WDBC)*.
+
+---
+
+## 📋 Sobre o Projeto
+
+O diagnóstico precoce é um fator determinante para o sucesso do tratamento do câncer de mama. Modelos de Machine Learning são capazes de identificar padrões complexos em dados clínicos de forma automatizada — mas sua adoção no ambiente médico esbarra no problema da **"caixa preta"**: médicos precisam entender *por que* o modelo tomou determinada decisão.
+
+Este projeto resolverá esse problema combinando:
+
+- **Modelos preditivos** (Por enquanto: Árvore de Decisão, Regressão Logística, Random Forest e SVM) treinados na base WDBC
+- **SHAP** (*SHapley Additive exPlanations*) para explicar o impacto de cada variável clínica na previsão individual
+- **UMAP** (*Uniform Manifold Approximation and Projection*) para visualização da separabilidade natural dos dados
+- **Processamento em lote** via upload de planilhas, eliminando a digitação manual de dezenas de variáveis
+- **Geração de relatórios automatizados** (PDF/CSV) com os diagnósticos e suas justificativas clínicas
+
+---
+
+## 🗂️ Futura Estrutura do Repositório
+
+```
+├── Wisconsin.ipynb          # Notebook principal de análise e modelagem
+├── wisconsin.pkl            # Conjuntos de treino/teste serializados
+├── data/                    # Base de dados WDBC (baixada via Kaggle Hub)
+├── reports/                 # Relatórios gerados pelo software
+└── README.md
+```
+
+---
+
+## 🔬 Base de Dados
+
+**Breast Cancer Wisconsin Diagnostic (WDBC)**
+- **Fonte:** [UCI Machine Learning Repository via Kaggle](https://www.kaggle.com/datasets/uciml/breast-cancer-wisconsin-data)
+- **Amostras:** 569 pacientes · **Atributos:** 30 características morfológicas de núcleos celulares
+- **Classes:** Benigno (`B`) · Maligno (`M`)
+- **Origem:** Medidas extraídas por FNA (*Fine Needle Aspiration*) com interface gráfica (Street et al., 1993)
+
+---
+
+## 🧠 Modelos Implementados Atualmente
+
+| Modelo | Observação |
+|---|---|
+| Árvore de Decisão | Baseline interpretável, critério de entropia |
+| Regressão Logística | `solver=lbfgs`, `class_weight=balanced` |
+| Random Forest | 500 estimadores, `class_weight=balanced` |
+| SVM | Kernel RBF, `class_weight=balanced` |
+
+Todos os modelos são avaliados com: **Acurácia, Sensibilidade (Recall+), Especificidade (Recall−), F1, ROC-AUC e PR-AUC**.
+
+---
+
+## ⚙️ Instalação
+
+**Pré-requisitos:** Python 3.10+
+
+```bash
+# Clone o repositório
+git clone https://github.com/seu-usuario/seu-repositorio.git
+cd seu-repositorio
+
+# Instale as dependências
+pip install numpy pandas matplotlib seaborn scikit-learn \
+            kagglehub umap-learn shap
+```
+
+> Na primeira execução, o Kaggle Hub fará o download automático da base de dados.
+> É necessário ter as credenciais do Kaggle configuradas (`~/.kaggle/kaggle.json`).
+
+---
+
+## 🚀 Como Usar
+
+Abra e execute o notebook na ordem das seções:
+
+```bash
+jupyter notebook Wisconsin.ipynb
+```
+
+| Seção | Conteúdo |
+|---|---|
+| 1 | Importações e configurações globais |
+| 2 | Funções auxiliares (ROC/PR, Matriz de Confusão, métricas) |
+| 3 | Carregamento e preparação dos dados |
+| 4 | Análise Exploratória — EDA (estatísticas, histogramas, boxplots) |
+| 5 | Árvore de Decisão — baseline |
+| 6 | Regressão Logística |
+| 7 | Random Forest |
+| 8 | SVM |
+| 9 | Visualização de estrutura: UMAP e PCA |
+| 10 | Interpretabilidade com SHAP |
+
+---
+
+## 📦 Produtos do Projeto
+
+- [ ] Código-fonte dos modelos de ML com SHAP e UMAP
+- [ ] Software de processamento em lote (upload de planilhas)
+- [ ] Geração de relatórios automatizados (PDF/CSV/Cards)
+- [ ] Documentação da arquitetura e diagramas de fluxo de dados
+- [ ] Relatório de testes com métricas de validação
+
+---
+
+## 📅 Cronograma
+
+| Etapa | Mar | Abr | Mai | Jun | Jul | Ago | Set |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Proposta e Revisão Bibliográfica | ✓ | | | | | | |
+| EDA, Limpeza de Dados e UMAP | ✓ | | | | | | |
+| Fundamentação Teórica e Metodologia | ✓ | ✓ | | | | | |
+| Treinamento e Seleção do Modelo | | ✓ | | | | | |
+| Interpretabilidade (SHAP) | | ✓ | ✓ | | | | |
+| **Entrega PG I** | | | ✓ | | | | |
+| Processamento em Lote (Upload) | | | ✓ | | | | |
+| Geração de Relatórios (PDF/CSV) | | | ✓ | ✓ | | | |
+| Redação de Resultados e Conclusão | | | | ✓ | ✓ | | |
+| Testes e Correção de Bugs | | | | | ✓ | ✓ | |
+| Formatação ABNT e Revisão Final | | | | | | ✓ | ✓ |
+
+---
+
+## 📚 Referências Principais
+
+- **Shaon et al. (2024)** — Seleção de atributos com SHAP para detecção de câncer de mama; acurácia de até 99,82%
+- **Chen et al. (2023)** — Classificação com XGBoost, RF, KNN e LogReg; destaque para a métrica de Recall
+- **Rabiei et al. (2022)** — Uso de SMOTE para balanceamento; Random Forest como melhor classificador
+- **Street et al. (1993)** — Artigo fundacional da base WDBC
+
+---
+
+## 👤 Equipe
+
+| | |
+|---|---|
+| **Aluno** | Gabriel Ast dos Santos |
+| **E-mail** | ast.gabriel2004@gmail.com |
+| **Orientador** | Prof. Rodrigo Ramos Alves |
+| **E-mail** | rodrigo.alves@utp.br |
+| **Instituição** | Universidade Tuiuti do Paraná |
+| **Curso** | Bacharelado em Ciência da Computação |
+| **Ano** | 2026 |
