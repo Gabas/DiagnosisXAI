@@ -13,7 +13,7 @@ O diagnóstico precoce é um fator determinante para o sucesso do tratamento do 
 
 Este projeto resolverá esse problema combinando:
 
-- **Modelos preditivos** (Por enquanto: Árvore de Decisão, Regressão Logística, Random Forest e SVM) treinados na base WDBC
+- **Modelos preditivos** (Por enquanto: Árvore de Decisão, KNN, Regressão Logística, Random Forest e SVM) treinados na base WDBC
 - **SHAP** (*SHapley Additive exPlanations*) para explicar o impacto de cada variável clínica na previsão individual
 - **UMAP** (*Uniform Manifold Approximation and Projection*) para visualização da separabilidade natural dos dados
 - **Processamento em lote** via upload de planilhas, eliminando a digitação manual de dezenas de variáveis
@@ -21,14 +21,20 @@ Este projeto resolverá esse problema combinando:
 
 ---
 
-## 🗂️ Futura Estrutura do Repositório
+## 🗂️ Estrutura do Repositório
 
-```
-├── Wisconsin.ipynb          # Notebook principal de análise e modelagem
-├── wisconsin.pkl            # Conjuntos de treino/teste serializados
-├── data/                    # Base de dados WDBC (baixada via Kaggle Hub)
-├── reports/                 # Relatórios gerados pelo software
-└── README.md
+```text
+├── app/                     # Interface do usuário (aplicativo)
+│   └── main.py              
+├── data/                    # Conjuntos de treino/teste processados
+│   └── wisconsin.pkl        
+├── notebooks/               # Experimentos, análises e treinamento de modelos
+│   └── Wisconsin.ipynb      
+├── reports/                 # Saídas do sistema
+│   ├── figures/             
+│   └── logs/                
+├── README.md               
+└── .gitignore               
 ```
 
 ---
@@ -47,7 +53,8 @@ Este projeto resolverá esse problema combinando:
 
 | Modelo | Observação |
 |---|---|
-| Árvore de Decisão | Baseline interpretável, critério de entropia |
+| Árvore de Decisão | Critério de entropia |
+| KNN | 5 vizinhos |
 | Regressão Logística | `solver=lbfgs`, `class_weight=balanced` |
 | Random Forest | 500 estimadores, `class_weight=balanced` |
 | SVM | Kernel RBF, `class_weight=balanced` |
@@ -58,16 +65,15 @@ Todos os modelos são avaliados com: **Acurácia, Sensibilidade (Recall+), Espec
 
 ## ⚙️ Instalação
 
-**Pré-requisitos:** Python 3.10+
+**Pré-requisitos:** Python 3.11+
 
 ```bash
 # Clone o repositório
-git clone https://github.com/seu-usuario/seu-repositorio.git
+git clone [https://github.com/seu-usuario/seu-repositorio.git](https://github.com/seu-usuario/seu-repositorio.git)
 cd seu-repositorio
 
 # Instale as dependências
-pip install numpy pandas matplotlib seaborn scikit-learn \
-            kagglehub umap-learn shap
+pip install numpy pandas matplotlib seaborn plotly Pillow scikit-learn tensorflow yellowbrick kagglehub umap-learn shap customtkinter
 ```
 
 > Na primeira execução, o Kaggle Hub fará o download automático da base de dados.
@@ -90,11 +96,12 @@ jupyter notebook Wisconsin.ipynb
 | 3 | Carregamento e preparação dos dados |
 | 4 | Análise Exploratória — EDA (estatísticas, histogramas, boxplots) |
 | 5 | Árvore de Decisão — baseline |
-| 6 | Regressão Logística |
-| 7 | Random Forest |
-| 8 | SVM |
-| 9 | Visualização de estrutura: UMAP e PCA |
-| 10 | Interpretabilidade com SHAP |
+| 6 | KNN |
+| 7 | Regressão Logística |
+| 8 | Random Forest |
+| 9 | SVM |
+| 10 | Visualização de estrutura: UMAP e PCA |
+| 11 | Interpretabilidade com SHAP |
 
 ---
 
@@ -135,14 +142,12 @@ jupyter notebook Wisconsin.ipynb
 
 ---
 
-## 👤 Equipe
+## 👤 Autor
 
 | | |
 |---|---|
-| **Aluno** | Gabriel Ast dos Santos |
+| **Nome** | Gabriel Ast dos Santos |
 | **E-mail** | ast.gabriel2004@gmail.com |
-| **Orientador** | Prof. Rodrigo Ramos Alves |
-| **E-mail** | rodrigo.alves@utp.br |
-| **Instituição** | Universidade Tuiuti do Paraná |
-| **Curso** | Bacharelado em Ciência da Computação |
-| **Ano** | 2026 |
+| **Universidade** | Universidade Tuiuti do Paraná |
+
+---
