@@ -1,0 +1,10 @@
+customtkinter
+plotly
+matplotlib
+seaborn
+pandas
+scikit-learn
+tensorflow
+yellowbrick
+umap-learn
+shap
