@@ -24,17 +24,36 @@ Este projeto resolverá esse problema combinando:
 ## 🗂️ Estrutura do Repositório
 
 ```text
-├── app/                     # Interface do usuário (aplicativo)
-│   └── main.py              
+├── app/                     # Interface do usuário e lógica do sistema
+│   ├── assets/              # Arquivos estáticos
+│   │   └── images/          # Ícones e logos do sistema
+│   ├── core/                # Processamento de dados e Inteligência Artificial
+│   │   ├── batch_processor.py # Lógica de processamento em lote
+│   │   ├── inference.py       # Script de carregamento do modelo treinado
+│   │   └── xai_generator.py   # Lógica para geração de gráficos SHAP/UMAP
+│   ├── utils/               # Funções de apoio e configurações globais
+│   │   ├── config.py        # Cores padrão, fontes e caminhos do sistema
+│   │   └── file_manager.py  # Funções para salvar CSVs e abrir PDFs
+│   ├── views/               # Telas e componentes da interface gráfica
+│   │   ├── dashboard_view.py  # Tela de resumo e métricas
+│   │   ├── history_view.py    # Tela de consultas a lotes antigos
+│   │   ├── main_window.py     # Menu lateral e gerenciador de telas
+│   │   └── predict_view.py    # Tela de upload de arquivos e processamento
+│   └── main.py              # Ponto de entrada (inicialização do aplicativo)
+│
 ├── data/                    # Conjuntos de treino/teste processados
 │   └── wisconsin.pkl        
+│
 ├── notebooks/               # Experimentos, análises e treinamento de modelos
 │   └── Wisconsin.ipynb      
+│
 ├── reports/                 # Saídas do sistema
 │   ├── figures/             
-│   └── logs/                
-├── README.md               
-└── .gitignore               
+│   └── logs/     
+│           
+├── README.md     
+│          
+└── .gitignore
 ```
 
 ---
