@@ -1,8 +1,26 @@
-# app/views/dashboard_view.py
+"""
+Módulo contendo a interface do Dashboard inicial.
+"""
+
 import customtkinter as ctk
 
 class DashboardView(ctk.CTkFrame):
+    """
+    Frame responsável por exibir as métricas gerais do sistema.
+
+    Apresenta cartões com estatísticas globais (total de amostras, 
+    casos benignos e malignos) e um espaço reservado para gráficos.
+
+    Parameters
+    ----------
+    master : ctk.CTkBaseClass
+        O widget pai ao qual este frame pertence (geralmente MainWindow).
+    **kwargs
+        Argumentos adicionais passados para o construtor do CTkFrame.
+    """
+
     def __init__(self, master, **kwargs):
+        """Inicializa o frame do Dashboard e configura seu layout."""
         super().__init__(master, corner_radius=10, fg_color="transparent", **kwargs)
         
         self.grid_columnconfigure((0, 1, 2), weight=1)
@@ -11,6 +29,10 @@ class DashboardView(ctk.CTkFrame):
         self._setup_ui()
 
     def _setup_ui(self):
+        """
+        Constrói os elementos visuais do Dashboard, incluindo título, 
+        cartões de informação e o placeholder do gráfico.
+        """
         title = ctk.CTkLabel(self, text="Visão Geral dos Dados", font=ctk.CTkFont(size=24, weight="bold"))
         title.grid(row=0, column=0, columnspan=3, padx=20, pady=(20, 20), sticky="w")
 
