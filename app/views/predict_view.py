@@ -6,6 +6,7 @@ import customtkinter as ctk
 from tkinter import filedialog, ttk
 import os
 import pandas as pd
+from core.batch_processor import BatchProcessor
 
 class PredictView(ctk.CTkFrame):
     """
@@ -92,7 +93,9 @@ class PredictView(ctk.CTkFrame):
         style.map("Treeview.Heading", background=[('active', '#14375e')])
 
         # --- Botão de Processamento ---
-        self.btn_run = ctk.CTkButton(self, text="Processar Lote e Gerar XAI", height=45, font=ctk.CTkFont(size=15, weight="bold"), state="disabled")
+        self.btn_run = ctk.CTkButton(self, text="Processar Lote e Gerar XAI", height=45, 
+                                     font=ctk.CTkFont(size=15, weight="bold"), state="disabled",
+                                     command=self.process_batch)
         self.btn_run.grid(row=3, column=0, padx=20, pady=20, sticky="ew")
 
     def select_file(self):
@@ -152,3 +155,46 @@ class PredictView(ctk.CTkFrame):
         except Exception as e:
             self.file_path_var.set(f"Erro ao carregar arquivo: {e}")
             self.btn_run.configure(state="disabled")
+
+    def process_batch(self):
+        """
+        Instancia o processador, envia o DataFrame para padronização
+        e atualiza a tabela visual com os novos dados (Z-score).
+        """
+        if self.df is not None:
+            try:
+                processor = BatchProcessor()
+                
+                # 1. Processa TODAS as linhas do DataFrame
+                df_padronizado = processor.process(self.df)
+                
+                # 2. Atualiza a tabela no ecrã para mostrar os dados transformados
+                self._update_treeview_with_data(df_padronizado)
+                
+                # 3. Confirmação no terminal sem limitar as linhas
+                print(f"Lote completo processado com sucesso! Total: {len(df_padronizado)} linhas.")
+                
+                # TODO: No futuro, chamaremos a inferência e o XAIGenerator aqui
+                
+            except Exception as e:
+                print(f"Erro durante o processamento: {e}")
+
+    def _update_treeview_with_data(self, df: pd.DataFrame):
+        """
+        Limpa a tabela atual e insere os dados de um novo DataFrame.
+        """
+        # Limpa os dados antigos
+        self.tree.delete(*self.tree.get_children())
+        
+        # Configura as colunas
+        colunas = list(df.columns)
+        self.tree["columns"] = colunas
+        
+        for col in colunas:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=120, minwidth=120, stretch=False, anchor="center") 
+            
+        # Insere todas as linhas formatadas (arredondando para 4 casas decimais para caber bem no ecrã)
+        for indice, linha in df.iterrows():
+            valores = [round(val, 4) if isinstance(val, float) else val for val in linha]
+            self.tree.insert("", "end", values=valores)
