@@ -1,90 +1,116 @@
 """
-Módulo contendo a interface para importação e visualização de dados em lote.
+Módulo contendo a interface em etapas para importação, padronização, predição e auditoria.
 """
 
 import customtkinter as ctk
 from tkinter import filedialog, ttk
 import os
 import pandas as pd
+
 from core.batch_processor import BatchProcessor
+from core.inference import ModelLoader
+from core.predictor import PredictorEngine
 
 class PredictView(ctk.CTkFrame):
     """
-    Frame responsável pelo upload e pré-visualização de arquivos CSV clínicos.
-
-    Permite que o usuário selecione um arquivo de lote, visualize seus 
-    dados em uma tabela renderizada dinamicamente e dispare o modelo de IA.
+    Frame responsável pelo pipeline completo de diagnóstico assistido e validação.
 
     Attributes
     ----------
-    df : pandas.DataFrame ou None
-        Armazena o dataframe lido a partir do arquivo CSV.
-    selected_file_path : str
-        Caminho absoluto do arquivo selecionado no sistema.
-    tree : ttk.Treeview
-        Componente visual de tabela para exibir os dados do lote.
-        
-    Parameters
-    ----------
-    master : ctk.CTkBaseClass
-        O widget pai ao qual este frame pertence.
-    **kwargs
-        Argumentos adicionais passados para o construtor do CTkFrame.
+    df_bruto : pandas.DataFrame ou None
+        Dados recém-importados do CSV.
+    df_padronizado : pandas.DataFrame ou None
+        Dados processados através da transformação Z-score.
+    df_resultado : pandas.DataFrame ou None
+        Dados consolidados com a predição da inferência.
     """
 
     def __init__(self, master, **kwargs):
-        """Inicializa o frame de predição e variáveis de estado."""
+        """
+        Inicializa o frame de predição, configurando o layout e instanciando os motores lógicos.
+
+        Parameters
+        ----------
+        master : ctk.CTkBaseClass
+            O widget pai ao qual este frame pertence.
+        **kwargs
+            Argumentos adicionais passados para o construtor do CTkFrame.
+        """
         super().__init__(master, corner_radius=10, fg_color="transparent", **kwargs)
         
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(2, weight=1) 
+        self.grid_rowconfigure(5, weight=1) 
         
-        self.df = None  
+        self.df_bruto = None
+        self.df_padronizado = None
+        self.df_resultado = None
+        
+        self.model_loader = ModelLoader()
+        self.predictor = PredictorEngine(self.model_loader)
+        
         self._setup_ui()
 
     def _setup_ui(self):
         """
-        Constrói a interface, incluindo botões de upload, labels 
-        informativos e o componente Treeview para a tabela.
+        Constrói e posiciona os componentes visuais da interface de predição.
         """
-        title = ctk.CTkLabel(self, text="Importação de Lote Clínico", font=ctk.CTkFont(size=24, weight="bold"))
+        title = ctk.CTkLabel(self, text="Diagnóstico Assistido por IA", font=ctk.CTkFont(size=24, weight="bold"))
         title.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="w")
 
-        # --- Frame de Upload ---
+        # --- Passo 1: Upload ---
         upload_frame = ctk.CTkFrame(self)
-        upload_frame.grid(row=1, column=0, padx=20, pady=10, sticky="nsew")
-        upload_frame.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(upload_frame, text="Selecione um arquivo .csv contendo as variáveis extraídas por FNA:", font=ctk.CTkFont(size=14)).grid(row=0, column=0, padx=20, pady=(15, 5), sticky="w")
-
+        upload_frame.grid(row=1, column=0, padx=20, pady=5, sticky="nsew")
+        ctk.CTkLabel(upload_frame, text="Passo 1: Importar Dados Brutos (CSV)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=20, pady=(10, 5), sticky="w")
         self.file_path_var = ctk.StringVar(value="Nenhum arquivo selecionado")
-        ctk.CTkLabel(upload_frame, textvariable=self.file_path_var, font=ctk.CTkFont(size=12, slant="italic"), text_color="gray").grid(row=1, column=0, padx=20, pady=(0, 10), sticky="w")
+        ctk.CTkLabel(upload_frame, textvariable=self.file_path_var, font=ctk.CTkFont(size=12, slant="italic"), text_color="gray").grid(row=1, column=0, padx=20, pady=0, sticky="w")
+        ctk.CTkButton(upload_frame, text="Procurar Arquivo", command=self.select_file).grid(row=2, column=0, padx=20, pady=10, sticky="w")
 
-        btn_upload = ctk.CTkButton(upload_frame, text="Procurar Arquivo CSV", command=self.select_file)
-        btn_upload.grid(row=2, column=0, padx=20, pady=10, sticky="w")
+        # --- Passo 2: Padronização ---
+        padroniza_frame = ctk.CTkFrame(self)
+        padroniza_frame.grid(row=2, column=0, padx=20, pady=5, sticky="nsew")
+        ctk.CTkLabel(padroniza_frame, text="Passo 2: Higienizar e Escalar (Z-Score)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=20, pady=(10, 5), sticky="w")
+        self.btn_standardize = ctk.CTkButton(padroniza_frame, text="Aplicar Padronização", state="disabled", command=self.standardize_data, fg_color="#d35400", hover_color="#e67e22")
+        self.btn_standardize.grid(row=1, column=0, padx=20, pady=10, sticky="w")
 
-        # --- Frame do Preview dos Dados (Tabela) ---
+        # --- Passo 3: Inferência de IA ---
+        ia_frame = ctk.CTkFrame(self)
+        ia_frame.grid(row=3, column=0, padx=20, pady=5, sticky="nsew")
+        ctk.CTkLabel(ia_frame, text="Passo 3: Inteligência Artificial", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=20, pady=(10, 5), sticky="w")
+        
+        # Volta a adicionar a opção "Todos (Comparação)" no topo da lista
+        modelos_disponiveis = ["Todos (Comparação)"] + list(self.model_loader.models.keys())
+        self.model_selector = ctk.CTkOptionMenu(ia_frame, values=modelos_disponiveis, state="disabled")
+        self.model_selector.grid(row=1, column=0, padx=20, pady=10, sticky="w")
+
+        self.btn_run = ctk.CTkButton(ia_frame, text="Processar Diagnóstico", state="disabled", command=self.process_batch, fg_color="#27ae60", hover_color="#2ecc71")
+        self.btn_run.grid(row=1, column=1, padx=20, pady=10, sticky="w")
+
+        # --- Passo 4: Auditoria (Opcional) ---
+        audit_frame = ctk.CTkFrame(self)
+        audit_frame.grid(row=4, column=0, padx=20, pady=5, sticky="nsew")
+        ctk.CTkLabel(audit_frame, text="Passo 4: Auditoria Acadêmica (Opcional)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=20, pady=(10, 5), sticky="w")
+        
+        self.btn_audit = ctk.CTkButton(audit_frame, text="Carregar Gabarito (CSV)", state="disabled", command=self.run_audit, fg_color="#8e44ad", hover_color="#9b59b6")
+        self.btn_audit.grid(row=1, column=0, padx=20, pady=10, sticky="w")
+        
+        self.lbl_audit_results = ctk.CTkLabel(audit_frame, text="", justify="left", font=ctk.CTkFont(size=13, weight="bold"))
+        self.lbl_audit_results.grid(row=1, column=1, padx=20, pady=10, sticky="w")
+
+        # --- Tabela de Preview ---
         self.preview_frame = ctk.CTkFrame(self)
-        self.preview_frame.grid(row=2, column=0, padx=20, pady=10, sticky="nsew")
+        self.preview_frame.grid(row=5, column=0, padx=20, pady=10, sticky="nsew")
         self.preview_frame.grid_columnconfigure(0, weight=1)
         self.preview_frame.grid_rowconfigure(1, weight=1) 
 
-        ctk.CTkLabel(self.preview_frame, text="Pré-visualização dos Dados:", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=10, pady=(10, 5), sticky="w")
-
-        # Criando a tabela (Treeview)
         self.tree = ttk.Treeview(self.preview_frame, show="headings")
         self.tree.grid(row=1, column=0, padx=(10, 0), pady=(10, 0), sticky="nsew")
 
-        # Usando CTkScrollbar no lugar do scrollbar nativo
         scrollbar_y = ctk.CTkScrollbar(self.preview_frame, orientation="vertical", command=self.tree.yview)
         scrollbar_y.grid(row=1, column=1, padx=(0, 10), pady=(10, 0), sticky="ns")
-        
         scrollbar_x = ctk.CTkScrollbar(self.preview_frame, orientation="horizontal", command=self.tree.xview)
         scrollbar_x.grid(row=2, column=0, padx=(10, 0), pady=(0, 10), sticky="ew")
-        
         self.tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
 
-        # Customizando o estilo da tabela
         style = ttk.Style()
         style.theme_use("default")
         style.configure("Treeview", background="#2b2b2b", foreground="white", fieldbackground="#2b2b2b", borderwidth=0)
@@ -92,109 +118,150 @@ class PredictView(ctk.CTkFrame):
         style.configure("Treeview.Heading", background="#1f538d", foreground="white", relief="flat")
         style.map("Treeview.Heading", background=[('active', '#14375e')])
 
-        # --- Botão de Processamento ---
-        self.btn_run = ctk.CTkButton(self, text="Processar Lote e Gerar XAI", height=45, 
-                                     font=ctk.CTkFont(size=15, weight="bold"), state="disabled",
-                                     command=self.process_batch)
-        self.btn_run.grid(row=3, column=0, padx=20, pady=20, sticky="ew")
-
     def select_file(self):
         """
-        Abre um explorador de arquivos do sistema focado em formatos .csv.
+        Abre o explorador de arquivos do sistema focado na seleção de arquivos CSV.
 
-        Caso um arquivo válido seja selecionado, atualiza o caminho exibido
-        na interface e invoca o carregamento dos dados na tabela.
+        Caso um arquivo seja selecionado, atualiza o caminho na interface e invoca
+        a leitura e pré-visualização dos dados.
         """
         filetypes = (('Arquivos CSV', '*.csv'), ('Todos os arquivos', '*.*'))
         filename = filedialog.askopenfilename(title='Selecione o arquivo CSV', initialdir='/', filetypes=filetypes)
 
         if filename:
-            self.selected_file_path = filename
-            nome_arquivo = os.path.basename(filename)
-            self.file_path_var.set(f"Arquivo selecionado: {nome_arquivo}")
-            
+            self.file_path_var.set(f"Arquivo selecionado: {os.path.basename(filename)}")
             self._load_and_preview_csv(filename)
 
     def _load_and_preview_csv(self, filepath: str):
         """
-        Lê um arquivo CSV utilizando pandas e popula o componente Treeview.
+        Lê o arquivo CSV selecionado, renderiza os dados brutos no Treeview e 
+        reseta o estado das etapas subsequentes.
 
         Parameters
         ----------
         filepath : str
-            Caminho absoluto ou relativo apontando para o arquivo .csv.
-
-        Raises
-        ------
-        Exception
-            Captura qualquer falha de leitura (ex: formatação inválida) e 
-            atualiza a UI com uma mensagem de erro, desativando processamento.
+            Caminho absoluto do arquivo CSV a ser carregado.
         """
         try:
-            # Lê o CSV inteiro
-            self.df = pd.read_csv(filepath)
+            self.df_bruto = pd.read_csv(filepath)
+            self._update_treeview_with_data(self.df_bruto)
             
-            # Limpa dados antigos da tabela
-            self.tree.delete(*self.tree.get_children())
-            
-            # Configura os cabeçalhos das colunas dinamicamente
-            colunas = list(self.df.columns)
-            self.tree["columns"] = colunas
-            
-            for col in colunas:
-                self.tree.heading(col, text=col)
-                self.tree.column(col, width=120, minwidth=120, stretch=False, anchor="center") 
-            
-            # Insere TODOS os dados na tabela
-            for indice, linha in self.df.iterrows():
-                valores = list(linha)
-                self.tree.insert("", "end", values=valores)
-                
-            self.btn_run.configure(state="normal")
-                
+            # Reset e habilitação dos próximos passos
+            self.btn_standardize.configure(state="normal")
+            self.model_selector.configure(state="disabled")
+            self.btn_run.configure(state="disabled")
+            self.btn_audit.configure(state="disabled")
+            self.lbl_audit_results.configure(text="")
         except Exception as e:
             self.file_path_var.set(f"Erro ao carregar arquivo: {e}")
-            self.btn_run.configure(state="disabled")
+
+    def standardize_data(self):
+        """
+        Instancia o BatchProcessor para higienizar e padronizar os dados brutos,
+        atualiza a visualização e habilita a etapa de inferência.
+        """
+        if self.df_bruto is not None:
+            try:
+                processor = BatchProcessor()
+                self.df_padronizado = processor.process(self.df_bruto)
+                self._update_treeview_with_data(self.df_padronizado)
+                
+                self.model_selector.configure(state="normal")
+                self.btn_run.configure(state="normal")
+            except Exception as e:
+                print(f"Erro na padronização: {e}")
 
     def process_batch(self):
         """
-        Instancia o processador, envia o DataFrame para padronização
-        e atualiza a tabela visual com os novos dados (Z-score).
+        Obtém o modelo selecionado, submete os dados padronizados ao PredictorEngine,
+        atualiza o Treeview com as predições e habilita a etapa de auditoria.
         """
-        if self.df is not None:
+        if self.df_padronizado is not None:
             try:
-                processor = BatchProcessor()
+                modelo_escolhido = self.model_selector.get()
+                self.df_resultado = self.predictor.predict(self.df_padronizado, modelo_escolhido)
+                self._update_treeview_with_data(self.df_resultado)
                 
-                # 1. Processa TODAS as linhas do DataFrame
-                df_padronizado = processor.process(self.df)
-                
-                # 2. Atualiza a tabela no ecrã para mostrar os dados transformados
-                self._update_treeview_with_data(df_padronizado)
-                
-                # 3. Confirmação no terminal sem limitar as linhas
-                print(f"Lote completo processado com sucesso! Total: {len(df_padronizado)} linhas.")
-                
-                # TODO: No futuro, chamaremos a inferência e o XAIGenerator aqui
-                
+                # Libera o Passo 4 após a IA rodar
+                self.btn_audit.configure(state="normal")
+                self.lbl_audit_results.configure(text="")
             except Exception as e:
-                print(f"Erro durante o processamento: {e}")
+                print(f"Erro durante a inferência: {e}")
+
+    def run_audit(self):
+        
+        """Abre o CSV com diagnósticos reais, adiciona à tabela e calcula a acurácia."""
+        filetypes = (('Arquivos CSV', '*.csv'), ('Todos os arquivos', '*.*'))
+        filename = filedialog.askopenfilename(title='Selecione o arquivo Gabarito', initialdir='/', filetypes=filetypes)
+
+        if filename:
+            try:
+                df_gabarito = pd.read_csv(filename)
+
+                # --- VALIDAÇÕES DE INTEGRIDADE ---
+                if 'diagnosis' not in df_gabarito.columns:
+                    self.lbl_audit_results.configure(text="Erro: O arquivo não possui a coluna 'diagnosis'.", text_color="#e74c3c")
+                    return
+
+                if len(df_gabarito) != len(self.df_bruto):
+                    self.lbl_audit_results.configure(text=f"Erro: O gabarito tem {len(df_gabarito)} pacientes, mas o lote inicial tem {len(self.df_bruto)}.", text_color="#e74c3c")
+                    return
+
+                primeira_col = self.df_bruto.columns[0]
+                dados_brutos = self.df_bruto[primeira_col].round(4).tolist()
+                dados_gabarito = df_gabarito[primeira_col].round(4).tolist()
+
+                if dados_brutos != dados_gabarito:
+                    self.lbl_audit_results.configure(text="Erro de Validação: Os dados morfólogicos não correspondem ao lote do Passo 1.", text_color="#e74c3c")
+                    return
+                # ----------------------------------
+
+                # 1. Traduz a coluna diagnosis para texto e adiciona ao DataFrame de resultado
+                gabarito_text = ['Maligno' if val == 1 else 'Benigno' for val in df_gabarito['diagnosis']]
+                self.df_resultado['Diagnóstico_Real'] = gabarito_text
+                
+                # 2. Atualiza a tabela na tela para mostrar a nova coluna "Diagnóstico_Real"
+                self._update_treeview_with_data(self.df_resultado)
+
+                # 3. Calcula a acurácia
+                resultados_texto = "Acurácia no Lote:\n"
+                colunas_ia = [col for col in self.df_resultado.columns if col.startswith('IA_')]
+                
+                if colunas_ia:
+                    # Se rodou "Todos os Modelos", mostra a nota de cada um
+                    for col in colunas_ia:
+                        acertos = (self.df_resultado[col] == self.df_resultado['Diagnóstico_Real']).sum()
+                        acc = (acertos / len(gabarito_text)) * 100
+                        resultados_texto += f"   • {col.replace('IA_', '')}: {acc:.2f}%\n"
+                else:
+                    # Se rodou apenas um modelo
+                    acertos = (self.df_resultado['Diagnóstico_IA'] == self.df_resultado['Diagnóstico_Real']).sum()
+                    acc = (acertos / len(gabarito_text)) * 100
+                    resultados_texto += f"   • Modelo Selecionado: {acc:.2f}%"
+
+                self.lbl_audit_results.configure(text=resultados_texto, text_color="#2ecc71")
+
+            except Exception as e:
+                self.lbl_audit_results.configure(text=f"Erro na auditoria: {e}", text_color="#e74c3c")
 
     def _update_treeview_with_data(self, df: pd.DataFrame):
         """
-        Limpa a tabela atual e insere os dados de um novo DataFrame.
+        Limpa as informações atuais do componente Treeview e o repopula com
+        os dados estruturados do DataFrame fornecido.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            DataFrame contendo os dados a serem renderizados visualmente na tabela.
         """
-        # Limpa os dados antigos
         self.tree.delete(*self.tree.get_children())
-        
-        # Configura as colunas
         colunas = list(df.columns)
         self.tree["columns"] = colunas
         
         for col in colunas:
             self.tree.heading(col, text=col)
-            self.tree.column(col, width=120, minwidth=120, stretch=False, anchor="center") 
+            self.tree.column(col, width=130, minwidth=130, stretch=False, anchor="center") 
             
-        # Insere todas as linhas formatadas (arredondando para 4 casas decimais para caber bem no ecrã)
         for indice, linha in df.iterrows():
             valores = [round(val, 4) if isinstance(val, float) else val for val in linha]
             self.tree.insert("", "end", values=valores)
