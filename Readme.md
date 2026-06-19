@@ -234,7 +234,7 @@ DiagnosisXAI/
 | Modelo | Configuração |
 |---|---|
 | Árvore de Decisão | Critério de entropia |
-| KNN | 5 vizinhos |
+| KNN | 20 vizinhos, pesos uniformes |
 | Regressão Logística | `solver=lbfgs`, `class_weight=balanced` |
 | Random Forest | 500 estimadores, `class_weight=balanced` |
 | SVM | Kernel RBF, `class_weight=balanced` |
