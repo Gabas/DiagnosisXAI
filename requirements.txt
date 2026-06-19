@@ -1,10 +1,25 @@
-customtkinter
-plotly
-matplotlib
-seaborn
-pandas
-scikit-learn
-tensorflow
-yellowbrick
-umap-learn
-shap
+# ============================================================
+# DiagnosisXAI — Dependências do Projeto
+# Python >= 3.11 recomendado (testado em 3.12)
+# ============================================================
+
+# --- Núcleo (compartilhado pelo app e pelo notebook) --------
+numpy>=1.26
+pandas>=2.1
+scikit-learn>=1.4
+
+# --- Interface gráfica (app) --------------------------------
+customtkinter>=5.2
+
+# --- Notebook / análise científica --------------------------
+matplotlib>=3.7
+seaborn>=0.13
+shap>=0.45
+umap-learn>=0.5
+
+# --- Opcional: visualizações adicionais no notebook ---------
+plotly>=5.0
+yellowbrick>=1.5
+
+# --- Ambiente Jupyter ---------------------------------------
+jupyterlab>=4.0
