@@ -21,7 +21,7 @@ class BatchProcessor:
         """
         self.loader = ModelLoader()
 
-    def process(self, df: pd.DataFrame) -> pd.DataFrame:
+    def process(self, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
         Executa o pipeline de limpeza e padronização.
 
@@ -32,8 +32,9 @@ class BatchProcessor:
 
         Returns
         -------
-        pandas.DataFrame
-            DataFrame higienizado e padronizado matematicamente.
+        tuple[pd.DataFrame, pd.DataFrame]
+            (df_scaled, df_limpo) — dados com Z-score e dados limpos sem escalonamento.
+            Modelos invariantes à escala (ex: Árvore de Decisão) devem usar df_limpo.
         """
         colunas_remover = ['id', 'Unnamed: 32', 'diagnosis']
         df_clean = df.drop(columns=[col for col in colunas_remover if col in df.columns], errors='ignore')
@@ -48,10 +49,10 @@ class BatchProcessor:
         if is_raw:
             if self.loader.scaler is None:
                 raise ValueError("O objeto Scaler não foi carregado corretamente.")
-            
-            dados_transformados = self.loader.scaler.transform(df_clean)
-            df_final = pd.DataFrame(dados_transformados, columns=df_clean.columns)
-        else:
-            df_final = df_clean
 
-        return df_final
+            dados_transformados = self.loader.scaler.transform(df_clean)
+            df_scaled = pd.DataFrame(dados_transformados, columns=df_clean.columns)
+        else:
+            df_scaled = df_clean
+
+        return df_scaled, df_clean

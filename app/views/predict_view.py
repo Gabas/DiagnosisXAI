@@ -43,6 +43,7 @@ class PredictView(ctk.CTkFrame):
         
         self.df_bruto = None
         self.df_padronizado = None
+        self.df_limpo = None
         self.df_resultado = None
         
         self.model_loader = ModelLoader()
@@ -163,7 +164,7 @@ class PredictView(ctk.CTkFrame):
         if self.df_bruto is not None:
             try:
                 processor = BatchProcessor()
-                self.df_padronizado = processor.process(self.df_bruto)
+                self.df_padronizado, self.df_limpo = processor.process(self.df_bruto)
                 self._update_treeview_with_data(self.df_padronizado)
                 
                 self.model_selector.configure(state="normal")
@@ -179,7 +180,7 @@ class PredictView(ctk.CTkFrame):
         if self.df_padronizado is not None:
             try:
                 modelo_escolhido = self.model_selector.get()
-                self.df_resultado = self.predictor.predict(self.df_padronizado, modelo_escolhido)
+                self.df_resultado = self.predictor.predict(self.df_padronizado, self.df_limpo, modelo_escolhido)
                 self._update_treeview_with_data(self.df_resultado)
                 
                 # Libera o Passo 4 após a IA rodar
