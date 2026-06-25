@@ -1,0 +1,37 @@
+[
+  {
+    "timestamp": "24/06/2026 22:50",
+    "arquivo": "dataTeste_sem_diagnostico.csv",
+    "modelo": "Todos (Comparação)",
+    "total": 143,
+    "malignos": null,
+    "benignos": null,
+    "acuracia": {
+      "ÁRV": 97.9,
+      "RAN": 97.2,
+      "SVM": 99.3,
+      "KNN": 95.8,
+      "REG": 97.2
+    }
+  },
+  {
+    "timestamp": "24/06/2026 22:46",
+    "arquivo": "dataTeste_sem_diagnostico.csv",
+    "modelo": "Random Forest",
+    "total": 143,
+    "malignos": 49,
+    "benignos": 94,
+    "acuracia": {
+      "Modelo Selecionado": 97.2
+    }
+  },
+  {
+    "timestamp": "24/06/2026 22:46",
+    "arquivo": "dataTeste_sem_diagnostico.csv",
+    "modelo": "Árvore de Decisão",
+    "total": 143,
+    "malignos": 50,
+    "benignos": 93,
+    "acuracia": null
+  }
+]

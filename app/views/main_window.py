@@ -4,6 +4,7 @@ Módulo responsável pela interface principal e navegação do sistema.
 
 import customtkinter as ctk
 from views.dashboard_view import DashboardView
+from views.history_view import HistoryView
 from views.predict_view import PredictView
 from views.about_view import AboutView
 
@@ -23,6 +24,8 @@ class MainWindow(ctk.CTk):
         Instância do frame referente à tela inicial.
     predict_view : PredictView
         Instância do frame referente à tela de Novo Diagnóstico.
+    history_view : HistoryView
+        Instância do frame referente à aba de histórico de sessões.
     about_view : AboutView
         Instância do frame referente à aba de informações do projeto.
     """
@@ -78,11 +81,17 @@ class MainWindow(ctk.CTk):
         )
         self.btn_predict.grid(row=2, column=0, sticky="ew")
 
+        self.btn_history = ctk.CTkButton(
+            self.sidebar_frame, text="Histórico", **nav_btn_cfg,
+            command=lambda: self.select_frame_by_name("history"),
+        )
+        self.btn_history.grid(row=3, column=0, sticky="ew")
+
         self.btn_about = ctk.CTkButton(
             self.sidebar_frame, text="Sobre", **nav_btn_cfg,
             command=lambda: self.select_frame_by_name("about"),
         )
-        self.btn_about.grid(row=3, column=0, sticky="ew")
+        self.btn_about.grid(row=4, column=0, sticky="ew")
 
         # Spacer empurra os controles de tema para o fundo
         self.sidebar_frame.grid_rowconfigure(5, weight=1)
@@ -105,6 +114,7 @@ class MainWindow(ctk.CTk):
         """
         self.dashboard_view = DashboardView(self)
         self.predict_view = PredictView(self)
+        self.history_view = HistoryView(self)
         self.about_view = AboutView(self)
 
     def select_frame_by_name(self, name: str):
@@ -114,22 +124,27 @@ class MainWindow(ctk.CTk):
         Parameters
         ----------
         name : str
-            Identificador da tela a ser exibida ('dashboard', 'predict' ou 'about').
+            Identificador da tela a ser exibida ('dashboard', 'predict', 'history' ou 'about').
         """
         active_color = ("gray75", "gray25")
 
         self.btn_dashboard.configure(fg_color=active_color if name == "dashboard" else "transparent")
-        self.btn_predict.configure(fg_color=active_color if name == "predict"   else "transparent")
-        self.btn_about.configure(fg_color=active_color if name == "about"       else "transparent")
+        self.btn_predict.configure(fg_color=active_color if name == "predict"     else "transparent")
+        self.btn_history.configure(fg_color=active_color if name == "history"     else "transparent")
+        self.btn_about.configure(fg_color=active_color if name == "about"         else "transparent")
 
         self.dashboard_view.grid_forget()
         self.predict_view.grid_forget()
+        self.history_view.grid_forget()
         self.about_view.grid_forget()
 
         if name == "dashboard":
             self.dashboard_view.grid(row=0, column=1, sticky="nsew")
         elif name == "predict":
             self.predict_view.grid(row=0, column=1, sticky="nsew")
+        elif name == "history":
+            self.history_view.refresh()
+            self.history_view.grid(row=0, column=1, sticky="nsew")
         elif name == "about":
             self.about_view.grid(row=0, column=1, sticky="nsew")
 

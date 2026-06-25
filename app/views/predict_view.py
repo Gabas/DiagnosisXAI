@@ -8,6 +8,7 @@ import os
 import pandas as pd
 
 from core.batch_processor import BatchProcessor
+from core.history_manager import HistoryManager
 from core.inference import ModelLoader
 from core.predictor import PredictorEngine
 
@@ -48,6 +49,7 @@ class PredictView(ctk.CTkFrame):
         
         self.model_loader = ModelLoader()
         self.predictor = PredictorEngine(self.model_loader)
+        self._history_manager = HistoryManager()
         
         self._setup_ui()
 
@@ -182,10 +184,20 @@ class PredictView(ctk.CTkFrame):
                 modelo_escolhido = self.model_selector.get()
                 self.df_resultado = self.predictor.predict(self.df_padronizado, self.df_limpo, modelo_escolhido)
                 self._update_treeview_with_data(self.df_resultado)
-                
+
                 # Libera o Passo 4 após a IA rodar
                 self.btn_audit.configure(state="normal")
                 self.lbl_audit_results.configure(text="")
+
+                # Persiste a sessão no histórico
+                arquivo = self.file_path_var.get().replace("Arquivo selecionado: ", "")
+                total = len(self.df_resultado)
+                if 'Diagnóstico_IA' in self.df_resultado.columns:
+                    malignos = int((self.df_resultado['Diagnóstico_IA'] == 'Maligno').sum())
+                    benignos = int((self.df_resultado['Diagnóstico_IA'] == 'Benigno').sum())
+                else:
+                    malignos = benignos = None
+                self._history_manager.save_session(arquivo, modelo_escolhido, total, malignos, benignos)
             except Exception as e:
                 print(f"Erro durante a inferência: {e}")
 
@@ -224,23 +236,25 @@ class PredictView(ctk.CTkFrame):
                 # 2. Atualiza a tabela na tela para mostrar a nova coluna "Diagnóstico_Real"
                 self._update_treeview_with_data(self.df_resultado)
 
-                # 3. Calcula a acurácia
-                resultados_texto = "Acurácia no Lote:\n"
+                # 3. Calcula a acurácia por modelo
+                acuracia = {}
                 colunas_ia = [col for col in self.df_resultado.columns if col.startswith('IA_')]
-                
+
                 if colunas_ia:
-                    # Se rodou "Todos os Modelos", mostra a nota de cada um
                     for col in colunas_ia:
                         acertos = (self.df_resultado[col] == self.df_resultado['Diagnóstico_Real']).sum()
-                        acc = (acertos / len(gabarito_text)) * 100
-                        resultados_texto += f"   • {col.replace('IA_', '')}: {acc:.2f}%\n"
+                        acuracia[col.replace('IA_', '')] = round((acertos / len(gabarito_text)) * 100, 2)
                 else:
-                    # Se rodou apenas um modelo
                     acertos = (self.df_resultado['Diagnóstico_IA'] == self.df_resultado['Diagnóstico_Real']).sum()
-                    acc = (acertos / len(gabarito_text)) * 100
-                    resultados_texto += f"   • Modelo Selecionado: {acc:.2f}%"
+                    acuracia['Modelo Selecionado'] = round((acertos / len(gabarito_text)) * 100, 2)
 
+                resultados_texto = "Acurácia no Lote:\n" + "\n".join(
+                    f"   • {k}: {v:.2f}%" for k, v in acuracia.items()
+                )
                 self.lbl_audit_results.configure(text=resultados_texto, text_color="#2ecc71")
+
+                # Atualiza a acurácia na entrada mais recente do histórico
+                self._history_manager.update_last_accuracy(acuracia)
 
             except Exception as e:
                 self.lbl_audit_results.configure(text=f"Erro na auditoria: {e}", text_color="#e74c3c")
