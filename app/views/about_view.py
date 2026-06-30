@@ -3,6 +3,7 @@ Módulo contendo a aba de informações sobre o projeto e a base de dados.
 """
 
 import customtkinter as ctk
+from utils.ui import ScrollableFrame
 
 
 class AboutView(ctk.CTkFrame):
@@ -33,7 +34,7 @@ class AboutView(ctk.CTkFrame):
         """
         Constrói os cards de informação dentro de um frame rolável.
         """
-        scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        scroll = ScrollableFrame(self, fg_color="transparent")
         scroll.grid(row=0, column=0, sticky="nsew", padx=24, pady=24)
         scroll.grid_columnconfigure((0, 1), weight=1)
 

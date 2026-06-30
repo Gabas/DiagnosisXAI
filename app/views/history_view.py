@@ -5,6 +5,7 @@ Módulo contendo a aba de histórico de sessões de diagnóstico.
 import customtkinter as ctk
 from tkinter import messagebox
 from core.history_manager import HistoryManager
+from utils.ui import ScrollableFrame
 
 
 class HistoryView(ctk.CTkFrame):
@@ -70,7 +71,7 @@ class HistoryView(ctk.CTkFrame):
         )
         self._btn_clear.grid(row=0, column=1, rowspan=2, sticky="e")
 
-        self._scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self._scroll = ScrollableFrame(self, fg_color="transparent")
         self._scroll.grid(row=1, column=0, sticky="nsew", padx=24, pady=16)
         self._scroll.grid_columnconfigure(0, weight=1)
 

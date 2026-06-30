@@ -11,6 +11,9 @@ from core.batch_processor import BatchProcessor
 from core.history_manager import HistoryManager
 from core.inference import ModelLoader
 from core.predictor import PredictorEngine
+from core.xai_generator import DecisionTreeExplainer
+from utils.ui import ScrollableFrame, bind_treeview_mousewheel
+from views.report_window import ReportWindow
 
 class PredictView(ctk.CTkFrame):
     """
@@ -26,6 +29,8 @@ class PredictView(ctk.CTkFrame):
         Dados consolidados com a predição da inferência.
     """
 
+    NOME_ARVORE = "Árvore de Decisão"
+
     def __init__(self, master, **kwargs):
         """
         Inicializa o frame de predição, configurando o layout e instanciando os motores lógicos.
@@ -40,13 +45,16 @@ class PredictView(ctk.CTkFrame):
         super().__init__(master, corner_radius=10, fg_color="transparent", **kwargs)
         
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(5, weight=1) 
-        
+        self.grid_rowconfigure(0, weight=1)
+
         self.df_bruto = None
         self.df_padronizado = None
         self.df_limpo = None
         self.df_resultado = None
-        
+
+        self._ultima_explicacao = None
+        self._report_window = None
+
         self.model_loader = ModelLoader()
         self.predictor = PredictorEngine(self.model_loader)
         self._history_manager = HistoryManager()
@@ -57,11 +65,15 @@ class PredictView(ctk.CTkFrame):
         """
         Constrói e posiciona os componentes visuais da interface de predição.
         """
-        title = ctk.CTkLabel(self, text="Diagnóstico Assistido por IA", font=ctk.CTkFont(size=24, weight="bold"))
+        container = ScrollableFrame(self, fg_color="transparent")
+        container.grid(row=0, column=0, sticky="nsew")
+        container.grid_columnconfigure(0, weight=1)
+
+        title = ctk.CTkLabel(container, text="Diagnóstico Assistido por IA", font=ctk.CTkFont(size=24, weight="bold"))
         title.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="w")
 
         # --- Passo 1: Upload ---
-        upload_frame = ctk.CTkFrame(self)
+        upload_frame = ctk.CTkFrame(container)
         upload_frame.grid(row=1, column=0, padx=20, pady=5, sticky="nsew")
         ctk.CTkLabel(upload_frame, text="Passo 1: Importar Dados Brutos (CSV)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=20, pady=(10, 5), sticky="w")
         self.file_path_var = ctk.StringVar(value="Nenhum arquivo selecionado")
@@ -69,14 +81,14 @@ class PredictView(ctk.CTkFrame):
         ctk.CTkButton(upload_frame, text="Procurar Arquivo", command=self.select_file).grid(row=2, column=0, padx=20, pady=10, sticky="w")
 
         # --- Passo 2: Padronização ---
-        padroniza_frame = ctk.CTkFrame(self)
+        padroniza_frame = ctk.CTkFrame(container)
         padroniza_frame.grid(row=2, column=0, padx=20, pady=5, sticky="nsew")
         ctk.CTkLabel(padroniza_frame, text="Passo 2: Higienizar e Escalar (Z-Score)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=20, pady=(10, 5), sticky="w")
         self.btn_standardize = ctk.CTkButton(padroniza_frame, text="Aplicar Padronização", state="disabled", command=self.standardize_data, fg_color="#d35400", hover_color="#e67e22")
         self.btn_standardize.grid(row=1, column=0, padx=20, pady=10, sticky="w")
 
         # --- Passo 3: Inferência de IA ---
-        ia_frame = ctk.CTkFrame(self)
+        ia_frame = ctk.CTkFrame(container)
         ia_frame.grid(row=3, column=0, padx=20, pady=5, sticky="nsew")
         ctk.CTkLabel(ia_frame, text="Passo 3: Inteligência Artificial", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=20, pady=(10, 5), sticky="w")
         
@@ -89,7 +101,7 @@ class PredictView(ctk.CTkFrame):
         self.btn_run.grid(row=1, column=1, padx=20, pady=10, sticky="w")
 
         # --- Passo 4: Auditoria (Opcional) ---
-        audit_frame = ctk.CTkFrame(self)
+        audit_frame = ctk.CTkFrame(container)
         audit_frame.grid(row=4, column=0, padx=20, pady=5, sticky="nsew")
         ctk.CTkLabel(audit_frame, text="Passo 4: Auditoria Acadêmica (Opcional)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=20, pady=(10, 5), sticky="w")
         
@@ -99,14 +111,26 @@ class PredictView(ctk.CTkFrame):
         self.lbl_audit_results = ctk.CTkLabel(audit_frame, text="", justify="left", font=ctk.CTkFont(size=13, weight="bold"))
         self.lbl_audit_results.grid(row=1, column=1, padx=20, pady=10, sticky="w")
 
+        # --- Passo 5: Explicabilidade (XAI) ---
+        xai_frame = ctk.CTkFrame(container)
+        xai_frame.grid(row=5, column=0, padx=20, pady=5, sticky="nsew")
+        ctk.CTkLabel(xai_frame, text="Passo 5: Explicabilidade (XAI) — Árvore de Decisão", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, columnspan=2, padx=20, pady=(10, 5), sticky="w")
+
+        self.btn_report = ctk.CTkButton(xai_frame, text="Ver Relatório de Decisão", state="disabled", command=self.show_report, fg_color="#2980b9", hover_color="#3498db")
+        self.btn_report.grid(row=1, column=0, padx=20, pady=10, sticky="w")
+
+        self.lbl_report_hint = ctk.CTkLabel(xai_frame, text="Disponível após executar a Árvore de Decisão (ou 'Todos').", font=ctk.CTkFont(size=12, slant="italic"), text_color="gray")
+        self.lbl_report_hint.grid(row=1, column=1, padx=20, pady=10, sticky="w")
+
         # --- Tabela de Preview ---
-        self.preview_frame = ctk.CTkFrame(self)
-        self.preview_frame.grid(row=5, column=0, padx=20, pady=10, sticky="nsew")
+        self.preview_frame = ctk.CTkFrame(container)
+        self.preview_frame.grid(row=6, column=0, padx=20, pady=10, sticky="nsew")
         self.preview_frame.grid_columnconfigure(0, weight=1)
         self.preview_frame.grid_rowconfigure(1, weight=1) 
 
-        self.tree = ttk.Treeview(self.preview_frame, show="headings")
+        self.tree = ttk.Treeview(self.preview_frame, show="headings", height=15)
         self.tree.grid(row=1, column=0, padx=(10, 0), pady=(10, 0), sticky="nsew")
+        bind_treeview_mousewheel(self.tree)
 
         scrollbar_y = ctk.CTkScrollbar(self.preview_frame, orientation="vertical", command=self.tree.yview)
         scrollbar_y.grid(row=1, column=1, padx=(0, 10), pady=(10, 0), sticky="ns")
@@ -121,6 +145,20 @@ class PredictView(ctk.CTkFrame):
         style.configure("Treeview.Heading", background="#1f538d", foreground="white", relief="flat")
         style.map("Treeview.Heading", background=[('active', '#14375e')])
 
+    def _diretorio_inicial(self) -> str:
+        """
+        Resolve o diretório onde os diálogos de seleção de arquivo devem abrir.
+
+        Returns
+        -------
+        str
+            Caminho da pasta ``data/`` do repositório (onde ficam os CSVs).
+            Caso ela não exista, retorna a raiz do repositório como reserva.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        data_dir = os.path.join(base_dir, 'data')
+        return data_dir if os.path.isdir(data_dir) else base_dir
+
     def select_file(self):
         """
         Abre o explorador de arquivos do sistema focado na seleção de arquivos CSV.
@@ -129,7 +167,7 @@ class PredictView(ctk.CTkFrame):
         a leitura e pré-visualização dos dados.
         """
         filetypes = (('Arquivos CSV', '*.csv'), ('Todos os arquivos', '*.*'))
-        filename = filedialog.askopenfilename(title='Selecione o arquivo CSV', initialdir='/', filetypes=filetypes)
+        filename = filedialog.askopenfilename(title='Selecione o arquivo CSV', initialdir=self._diretorio_inicial(), filetypes=filetypes)
 
         if filename:
             self.file_path_var.set(f"Arquivo selecionado: {os.path.basename(filename)}")
@@ -155,6 +193,7 @@ class PredictView(ctk.CTkFrame):
             self.btn_run.configure(state="disabled")
             self.btn_audit.configure(state="disabled")
             self.lbl_audit_results.configure(text="")
+            self._reset_relatorio()
         except Exception as e:
             self.file_path_var.set(f"Erro ao carregar arquivo: {e}")
 
@@ -198,14 +237,75 @@ class PredictView(ctk.CTkFrame):
                 else:
                     malignos = benignos = None
                 self._history_manager.save_session(arquivo, modelo_escolhido, total, malignos, benignos)
+
+                # Gera e exibe a explicabilidade da Árvore de Decisão ao final
+                self._preparar_relatorio(modelo_escolhido)
             except Exception as e:
                 print(f"Erro durante a inferência: {e}")
+
+    def _reset_relatorio(self):
+        """Limpa o estado do relatório de explicabilidade e desabilita o Passo 5."""
+        self._ultima_explicacao = None
+        self.btn_report.configure(state="disabled")
+        self.lbl_report_hint.configure(
+            text="Disponível após executar a Árvore de Decisão (ou 'Todos').",
+            text_color="gray",
+        )
+
+    def _preparar_relatorio(self, modelo_escolhido: str):
+        """
+        Gera a explicação da Árvore de Decisão e abre o relatório, quando aplicável.
+
+        A explicabilidade só é produzida quando a Árvore de Decisão foi de fato
+        executada — seja selecionada isoladamente ou dentro do modo de comparação.
+
+        Parameters
+        ----------
+        modelo_escolhido : str
+            Nome do modelo selecionado pelo utilizador no Passo 3.
+        """
+        self._ultima_explicacao = None
+
+        arvore_executada = modelo_escolhido in (self.NOME_ARVORE, "Todos (Comparação)")
+        if not arvore_executada or self.df_limpo is None:
+            self._reset_relatorio()
+            return
+
+        try:
+            modelo_dt = self.model_loader.models.get(self.NOME_ARVORE)
+            explainer = DecisionTreeExplainer(modelo_dt, self.model_loader.feature_names)
+            self._ultima_explicacao = {
+                'importancias': explainer.global_importances(top_n=10),
+                'explicacoes': explainer.explain(self.df_limpo),
+            }
+            self.btn_report.configure(state="normal")
+            self.lbl_report_hint.configure(text="Relatório pronto.", text_color="#2ecc71")
+            self.show_report()
+        except Exception as e:
+            self.btn_report.configure(state="disabled")
+            self.lbl_report_hint.configure(
+                text=f"Erro ao gerar explicação: {e}", text_color="#e74c3c"
+            )
+
+    def show_report(self):
+        """Abre (ou recria) a janela de relatório de explicabilidade da árvore."""
+        if not self._ultima_explicacao:
+            return
+
+        if self._report_window is not None and self._report_window.winfo_exists():
+            self._report_window.destroy()
+
+        self._report_window = ReportWindow(
+            self,
+            importancias=self._ultima_explicacao['importancias'],
+            explicacoes=self._ultima_explicacao['explicacoes'],
+        )
 
     def run_audit(self):
         
         """Abre o CSV com diagnósticos reais, adiciona à tabela e calcula a acurácia."""
         filetypes = (('Arquivos CSV', '*.csv'), ('Todos os arquivos', '*.*'))
-        filename = filedialog.askopenfilename(title='Selecione o arquivo Gabarito', initialdir='/', filetypes=filetypes)
+        filename = filedialog.askopenfilename(title='Selecione o arquivo Gabarito', initialdir=self._diretorio_inicial(), filetypes=filetypes)
 
         if filename:
             try:
