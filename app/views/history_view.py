@@ -6,6 +6,8 @@ import customtkinter as ctk
 from tkinter import messagebox
 from core.history_manager import HistoryManager
 from utils.ui import ScrollableFrame
+from views.report_window import ReportWindow
+from views.report_window_lr import LogisticReportWindow
 
 
 class HistoryView(ctk.CTkFrame):
@@ -42,6 +44,7 @@ class HistoryView(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
         self._manager = HistoryManager()
+        self._detail_window = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -101,11 +104,14 @@ class HistoryView(ctk.CTkFrame):
         self._btn_clear.configure(state="normal")
 
         for i, entry in enumerate(entries):
-            self._build_card(self._scroll, entry, row=i)
+            self._build_card(self._scroll, entry, index=i)
 
-    def _build_card(self, parent, entry: dict, row: int):
+    def _build_card(self, parent, entry: dict, index: int):
         """
         Constrói e posiciona o card de uma única sessão de diagnóstico.
+
+        O card inteiro é clicável (abre os detalhes da sessão), exceto o botão
+        de exclusão, que remove apenas aquela consulta do histórico.
 
         Parameters
         ----------
@@ -113,16 +119,17 @@ class HistoryView(ctk.CTkFrame):
             Frame rolável onde o card será inserido.
         entry : dict
             Dicionário com os dados da sessão (timestamp, arquivo, modelo, etc.).
-        row : int
-            Linha da grade do frame pai onde o card será posicionado.
+        index : int
+            Posição da sessão na lista carregada — usada tanto para o
+            posicionamento na grade quanto para a exclusão individual.
         """
         card = ctk.CTkFrame(parent, corner_radius=8)
-        card.grid(row=row, column=0, sticky="ew", pady=(0, 10))
+        card.grid(row=index, column=0, sticky="ew", pady=(0, 10))
 
         content = ctk.CTkFrame(card, fg_color="transparent")
         content.pack(fill="both", expand=True, padx=16, pady=12)
 
-        # Linha 1: timestamp · nome do arquivo · total de pacientes
+        # Linha 1: timestamp · nome do arquivo · [✕] · total de pacientes
         row1 = ctk.CTkFrame(content, fg_color="transparent")
         row1.pack(fill="x")
 
@@ -135,6 +142,14 @@ class HistoryView(ctk.CTkFrame):
             row1, text=f"  ·  {entry.get('arquivo', '—')}",
             font=ctk.CTkFont(size=12, weight="bold"),
         ).pack(side="left")
+
+        btn_delete = ctk.CTkButton(
+            row1, text="✕", width=28, height=28,
+            fg_color="transparent", hover_color="#c0392b",
+            text_color=("gray30", "gray70"),
+            command=lambda i=index: self._confirm_delete_one(i),
+        )
+        btn_delete.pack(side="right", padx=(8, 0))
 
         total = entry.get('total', 0)
         ctk.CTkLabel(
@@ -182,6 +197,57 @@ class HistoryView(ctk.CTkFrame):
                 font=ctk.CTkFont(size=12), text_color="#2ecc71",
             ).pack(anchor="w", padx=10, pady=6)
 
+        # Torna todo o card clicável para abrir os detalhes, exceto o ✕ (excluir).
+        self._bind_click(card, lambda _e, en=entry: self._open_details(en), skip=btn_delete)
+
+    def _bind_click(self, widget, handler, skip):
+        """
+        Vincula um clique (Button-1) a um widget e a todos os seus descendentes.
+
+        Parameters
+        ----------
+        widget : tkinter widget
+            Widget raiz a partir do qual o vínculo é propagado.
+        handler : callable
+            Função chamada no clique, recebendo o evento como argumento.
+        skip : tkinter widget
+            Widget (e sua subárvore) a ser ignorado — tipicamente o botão excluir.
+        """
+        if widget is skip:
+            return
+        widget.bind("<Button-1>", handler)
+        for child in widget.winfo_children():
+            self._bind_click(child, handler, skip)
+
+    def _confirm_delete_one(self, index: int):
+        """
+        Pede confirmação e exclui uma única consulta do histórico.
+
+        Parameters
+        ----------
+        index : int
+            Posição da sessão na lista carregada.
+        """
+        if messagebox.askyesno(
+            "Excluir Consulta",
+            "Deseja excluir esta consulta do histórico?\nEsta ação não pode ser desfeita.",
+        ):
+            self._manager.delete(index)
+            self.refresh()
+
+    def _open_details(self, entry: dict):
+        """
+        Abre (ou recria) a janela com os detalhes completos de uma sessão.
+
+        Parameters
+        ----------
+        entry : dict
+            Dados da sessão selecionada.
+        """
+        if self._detail_window is not None and self._detail_window.winfo_exists():
+            self._detail_window.destroy()
+        self._detail_window = SessionDetailWindow(self, entry)
+
     def _confirm_clear(self):
         """
         Exibe uma caixa de diálogo de confirmação antes de apagar o histórico.
@@ -193,3 +259,183 @@ class HistoryView(ctk.CTkFrame):
         ):
             self._manager.clear()
             self.refresh()
+
+
+class SessionDetailWindow(ctk.CTkToplevel):
+    """
+    Janela secundária com os detalhes completos de uma sessão de diagnóstico.
+
+    Exibe os metadados da consulta (data, arquivo, modelo, total), a
+    distribuição de diagnósticos e a acurácia por modelo, quando a etapa de
+    auditoria foi executada.
+    """
+
+    COR_MALIGNO = "#e74c3c"
+    COR_BENIGNO = "#2ecc71"
+
+    # Tipos de relatório de explicabilidade -> (rótulo, classe da janela).
+    _TIPOS = {
+        'arvore': ("Árvore de Decisão", ReportWindow),
+        'logistica': ("Regressão Logística", LogisticReportWindow),
+    }
+
+    def __init__(self, master, entry: dict, **kwargs):
+        """
+        Inicializa a janela de detalhes.
+
+        Parameters
+        ----------
+        master : ctk.CTkBaseClass
+            Widget que originou a abertura dos detalhes.
+        entry : dict
+            Dados da sessão a serem exibidos.
+        **kwargs
+            Argumentos adicionais para o construtor do CTkToplevel.
+        """
+        super().__init__(master, **kwargs)
+        self.title("Detalhes da Sessão")
+        self.geometry("480x620")
+        self.grid_columnconfigure(0, weight=1)
+        self._entry = entry
+        self._report_window = None
+        self._build(entry)
+        self.after(150, self.lift)
+        self.after(200, self.focus)
+
+    def _build(self, entry: dict):
+        """Constrói o conteúdo da janela a partir dos dados da sessão."""
+        wrapper = ctk.CTkFrame(self, fg_color="transparent")
+        wrapper.pack(fill="both", expand=True, padx=20, pady=20)
+
+        ctk.CTkLabel(
+            wrapper, text="Detalhes da Sessão",
+            font=ctk.CTkFont(size=20, weight="bold"),
+        ).pack(anchor="w", pady=(0, 12))
+
+        # --- Metadados principais ---
+        info = ctk.CTkFrame(wrapper)
+        info.pack(fill="x", pady=(0, 12))
+        campos = [
+            ("Data e hora", entry.get('timestamp', '—')),
+            ("Arquivo", entry.get('arquivo', '—')),
+            ("Modelo", entry.get('modelo', '—')),
+            ("Total de pacientes", str(entry.get('total', '—'))),
+        ]
+        for rotulo, valor in campos:
+            linha = ctk.CTkFrame(info, fg_color="transparent")
+            linha.pack(fill="x", padx=14, pady=4)
+            ctk.CTkLabel(
+                linha, text=f"{rotulo}:", width=150, anchor="w",
+                font=ctk.CTkFont(size=13, weight="bold"),
+            ).pack(side="left")
+            ctk.CTkLabel(
+                linha, text=valor, anchor="w", justify="left",
+                font=ctk.CTkFont(size=13), wraplength=270,
+            ).pack(side="left", padx=(8, 0))
+
+        # --- Distribuição (apenas para modelo único) ---
+        malignos = entry.get('malignos')
+        benignos = entry.get('benignos')
+        if malignos is not None and benignos is not None:
+            dist = ctk.CTkFrame(wrapper)
+            dist.pack(fill="x", pady=(0, 12))
+            ctk.CTkLabel(
+                dist, text="Distribuição dos diagnósticos",
+                font=ctk.CTkFont(size=14, weight="bold"),
+            ).pack(anchor="w", padx=14, pady=(10, 6))
+            barra = ctk.CTkFrame(dist, fg_color="transparent")
+            barra.pack(fill="x", padx=14, pady=(0, 10))
+            ctk.CTkLabel(
+                barra, text=f"Maligno: {malignos}", text_color=self.COR_MALIGNO,
+                font=ctk.CTkFont(size=13, weight="bold"),
+            ).pack(side="left")
+            ctk.CTkLabel(
+                barra, text=f"Benigno: {benignos}", text_color=self.COR_BENIGNO,
+                font=ctk.CTkFont(size=13, weight="bold"),
+            ).pack(side="left", padx=(20, 0))
+
+        # --- Acurácia (apenas após auditoria) ---
+        acc = ctk.CTkFrame(wrapper)
+        acc.pack(fill="x")
+        ctk.CTkLabel(
+            acc, text="Acurácia (auditoria)",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(anchor="w", padx=14, pady=(10, 6))
+
+        acuracia = entry.get('acuracia')
+        if acuracia:
+            for modelo, valor in acuracia.items():
+                linha = ctk.CTkFrame(acc, fg_color="transparent")
+                linha.pack(fill="x", padx=14, pady=2)
+                ctk.CTkLabel(
+                    linha, text=modelo, anchor="w", font=ctk.CTkFont(size=13),
+                ).pack(side="left")
+                ctk.CTkLabel(
+                    linha, text=f"{valor:.2f}%", anchor="e", text_color="#2ecc71",
+                    font=ctk.CTkFont(size=13, weight="bold"),
+                ).pack(side="right")
+            ctk.CTkFrame(acc, height=6, fg_color="transparent").pack()
+        else:
+            ctk.CTkLabel(
+                acc, text="Auditoria não executada nesta sessão.",
+                text_color="gray", font=ctk.CTkFont(size=12),
+            ).pack(anchor="w", padx=14, pady=(0, 10))
+
+        # --- Relatórios de explicabilidade (um botão por modelo interpretável) ---
+        relatorios = self._normalizar_relatorio(entry.get('relatorio'))
+        for tipo, (rotulo, _) in self._TIPOS.items():
+            if tipo in relatorios:
+                ctk.CTkButton(
+                    wrapper,
+                    text=f"Ver Relatório de Explicabilidade — {rotulo}",
+                    fg_color="#2980b9", hover_color="#3498db",
+                    command=lambda t=tipo: self._abrir_relatorio(t),
+                ).pack(fill="x", pady=(14, 0))
+
+    @staticmethod
+    def _normalizar_relatorio(relatorio) -> dict:
+        """
+        Normaliza o campo 'relatorio' para o formato por modelo.
+
+        Aceita o formato atual (chaves 'arvore'/'logistica') e o formato antigo
+        (relatório plano da árvore, com 'importancias'/'explicacoes' na raiz).
+
+        Parameters
+        ----------
+        relatorio : dict ou None
+            Conteúdo do campo 'relatorio' da sessão.
+
+        Returns
+        -------
+        dict
+            Mapa {tipo: dados_do_relatorio}, possivelmente vazio.
+        """
+        if not relatorio:
+            return {}
+        if 'arvore' in relatorio or 'logistica' in relatorio:
+            return relatorio
+        if 'explicacoes' in relatorio:  # formato antigo: somente a árvore
+            return {'arvore': relatorio}
+        return {}
+
+    def _abrir_relatorio(self, tipo: str):
+        """
+        Abre (ou recria) a janela do relatório de explicabilidade do tipo indicado.
+
+        Parameters
+        ----------
+        tipo : str
+            'arvore' ou 'logistica'.
+        """
+        relatorios = self._normalizar_relatorio(self._entry.get('relatorio'))
+        dados = relatorios.get(tipo)
+        if not dados:
+            return
+        if self._report_window is not None and self._report_window.winfo_exists():
+            self._report_window.destroy()
+        _, Classe = self._TIPOS[tipo]
+        self._report_window = Classe(
+            self,
+            importancias=dados.get('importancias', []),
+            explicacoes=dados.get('explicacoes', []),
+        )

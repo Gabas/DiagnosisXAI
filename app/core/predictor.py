@@ -23,6 +23,10 @@ class PredictorEngine:
     # Modelos que foram treinados em dados brutos (sem Z-score) e devem receber df_limpo
     MODELOS_SEM_ESCALA = {'Árvore de Decisão'}
 
+    # Modelos cuja "certeza" não é informativa: a Árvore de Decisão tem folhas
+    # puras, portanto a probabilidade é sempre 100% ou 0% — omitimos a coluna.
+    MODELOS_SEM_CERTEZA = {'Árvore de Decisão'}
+
     def predict(self, df_padronizado: pd.DataFrame, df_limpo: pd.DataFrame, model_name: str) -> pd.DataFrame:
         """
         Gera as previsões para um lote utilizando um ou todos os modelos.
@@ -66,7 +70,7 @@ class PredictorEngine:
             previsoes = modelo.predict(entrada)
             df_resultado['Diagnóstico_IA'] = ['Maligno' if p == 1 else 'Benigno' for p in previsoes]
 
-            if hasattr(modelo, 'predict_proba'):
+            if hasattr(modelo, 'predict_proba') and model_name not in self.MODELOS_SEM_CERTEZA:
                 probabilidades = modelo.predict_proba(entrada)
                 df_resultado['Certeza_Maligno(%)'] = [round(prob[1] * 100, 2) for prob in probabilidades]
 

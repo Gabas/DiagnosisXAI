@@ -1,12 +1,18 @@
 """
 Módulo responsável pela geração de explicações (XAI) dos diagnósticos.
 
-Implementa a interpretação da Árvore de Decisão: para cada paciente,
-percorre o caminho real de regras da raiz até a folha e decompõe a
-probabilidade final de malignidade na soma das contribuições marginais
-de cada característica morfológica. Diferente de métodos aproximados,
-esta explicação é exata — reflete a própria lógica de decisão da árvore.
+Implementa a interpretação de dois modelos:
+
+- Árvore de Decisão: percorre o caminho real de regras da raiz à folha e
+  decompõe a probabilidade de malignidade nas contribuições de cada divisão.
+- Regressão Logística: por ser um modelo linear, decompõe exatamente o
+  logito (w·x + b) na soma das contribuições wⱼ·xⱼ de cada característica e
+  projeta os pacientes em relação à fronteira de decisão real.
+
+Em ambos os casos a explicação é exata — reflete a própria lógica do modelo.
 """
+
+import numpy as np
 
 
 class DecisionTreeExplainer:
@@ -182,7 +188,7 @@ class DecisionTreeExplainer:
             certeza = p_maligno if classe == 'Maligno' else (1 - p_maligno)
 
             explicacoes.append({
-                'indice': indices[i],
+                'indice': int(indices[i]),
                 'classe': classe,
                 'certeza': round(certeza * 100, 1),
                 'contribuicoes': lista_contrib,
@@ -190,3 +196,177 @@ class DecisionTreeExplainer:
             })
 
         return explicacoes
+
+
+class LogisticRegressionExplainer:
+    """
+    Gera explicações interpretáveis para um classificador de Regressão Logística.
+
+    Como o modelo é linear sobre os dados padronizados (z-score), a decisão é
+    decomposta exatamente: o logito de malignidade vale ``w·x + b``, e a
+    contribuição de cada característica é ``wⱼ·xⱼ`` — positiva empurra para
+    Maligno, negativa para Benigno. Além disso, projeta cada paciente em
+    relação à fronteira de decisão real (o hiperplano ``w·x + b = 0``) para
+    visualização honesta em 2D, sem retreinar nenhum modelo auxiliar.
+
+    Attributes
+    ----------
+    model : sklearn.linear_model.LogisticRegression
+        Modelo linear já treinado sobre dados padronizados.
+    feature_names : list[str]
+        Nomes das características, na ordem usada no treino.
+    """
+
+    CLASSE_MALIGNO = 1
+    # Faixa de probabilidade em que o modelo é considerado pouco decidido.
+    FAIXA_LIMITROFE = (0.30, 0.70)
+    # Máximo de contribuições guardadas por paciente (o relatório exibe as 6 maiores).
+    MAX_CONTRIBUICOES = 10
+
+    def __init__(self, model, feature_names):
+        """
+        Inicializa o explicador a partir do modelo linear treinado.
+
+        Parameters
+        ----------
+        model : sklearn.linear_model.LogisticRegression
+            Regressão logística treinada (sobre dados em escala Z-score).
+        feature_names : list[str]
+            Nomes das colunas, na mesma ordem usada no treino.
+        """
+        self.model = model
+        self.feature_names = list(feature_names)
+        self._w = np.asarray(model.coef_[0], dtype=float)
+        self._b = float(model.intercept_[0])
+        self._norm_w = float(np.linalg.norm(self._w)) or 1.0
+        self._mal_idx = list(model.classes_).index(self.CLASSE_MALIGNO)
+
+    def global_importances(self, top_n: int = 10) -> list[dict]:
+        """
+        Retorna as características de maior peso na decisão do modelo.
+
+        Como a entrada é padronizada, a magnitude do coeficiente mede a
+        importância e o sinal indica a direção.
+
+        Parameters
+        ----------
+        top_n : int, optional
+            Número máximo de características a retornar (padrão 10).
+
+        Returns
+        -------
+        list[dict]
+            Itens {'feature', 'coeficiente', 'direcao'} ordenados pelo módulo
+            do coeficiente, do maior para o menor. 'direcao' é 'Maligno' quando
+            valores altos da característica indicam malignidade, 'Benigno' caso
+            contrário.
+        """
+        itens = [
+            {
+                'feature': self.feature_names[j],
+                'coeficiente': float(self._w[j]),
+                'direcao': 'Maligno' if self._w[j] > 0 else 'Benigno',
+            }
+            for j in range(len(self._w))
+        ]
+        itens.sort(key=lambda d: abs(d['coeficiente']), reverse=True)
+        return itens[:top_n]
+
+    def explain(self, X_scaled, X_raw) -> list[dict]:
+        """
+        Explica a decisão da regressão logística para cada amostra do lote.
+
+        Parameters
+        ----------
+        X_scaled : pandas.DataFrame
+            Dados padronizados (Z-score) — a entrada efetiva do modelo.
+        X_raw : pandas.DataFrame
+            Mesmos dados sem escalonamento, usados apenas para exibir os
+            valores reais das características ao usuário.
+
+        Returns
+        -------
+        list[dict]
+            Uma explicação por amostra, contendo:
+            - 'indice'        : rótulo da linha.
+            - 'classe'        : 'Maligno' ou 'Benigno'.
+            - 'probabilidade' : P(Maligno) em %, segundo o modelo.
+            - 'distancia'     : distância (com sinal) até a fronteira de decisão.
+            - 'limitrofe'     : True se o modelo está pouco decidido.
+            - 'contribuicoes' : lista ordenada por impacto, cada item com
+                                {'feature', 'valor', 'acima_media',
+                                 'contribuicao', 'direcao'}.
+            - 'x_plot'/'y_plot': coordenadas para o gráfico da fronteira.
+        """
+        Xs = X_scaled[self.feature_names]
+        Xr = X_raw[self.feature_names]
+        z = Xs.values
+        bruto = Xr.values
+        indices = list(Xs.index)
+
+        decisao = self.model.decision_function(z)          # w·x + b (logito)
+        prob = self.model.predict_proba(z)[:, self._mal_idx]
+        predicoes = self.model.predict(z)
+        distancia = decisao / self._norm_w                 # distância ao hiperplano
+        y_plot = self._eixo_ortogonal(z)
+
+        explicacoes = []
+        for i in range(z.shape[0]):
+            contribs = self._w * z[i]                       # wⱼ·zⱼ
+            total_abs = float(np.abs(contribs).sum()) or 1.0
+            itens = [
+                {
+                    'feature': self.feature_names[j],
+                    'valor': float(bruto[i, j]),
+                    'acima_media': bool(z[i, j] >= 0),
+                    'contribuicao': float(contribs[j]),
+                    'direcao': 'Maligno' if contribs[j] > 0 else 'Benigno',
+                    'peso_pct': round(abs(float(contribs[j])) / total_abs * 100, 1),
+                }
+                for j in range(len(self._w))
+            ]
+            itens.sort(key=lambda d: abs(d['contribuicao']), reverse=True)
+            lista = itens[:self.MAX_CONTRIBUICOES]
+
+            p = float(prob[i])
+            explicacoes.append({
+                'indice': int(indices[i]),
+                'classe': 'Maligno' if predicoes[i] == self.CLASSE_MALIGNO else 'Benigno',
+                'probabilidade': round(p * 100, 1),
+                'distancia': float(distancia[i]),
+                'limitrofe': bool(self.FAIXA_LIMITROFE[0] <= p <= self.FAIXA_LIMITROFE[1]),
+                'contribuicoes': lista,
+                'x_plot': float(distancia[i]),
+                'y_plot': float(y_plot[i]),
+            })
+
+        return explicacoes
+
+    def _eixo_ortogonal(self, z):
+        """
+        Calcula, para cada amostra, a coordenada no eixo ortogonal à fronteira.
+
+        Remove de cada amostra a componente na direção de ``w`` (a direção que
+        decide o diagnóstico) e projeta o resíduo na direção de maior variância.
+        Esse eixo não altera a decisão, servindo apenas para espalhar os
+        pacientes no gráfico sem distorcer a posição da fronteira.
+
+        Parameters
+        ----------
+        z : numpy.ndarray
+            Matriz (n_amostras × n_features) dos dados padronizados.
+
+        Returns
+        -------
+        numpy.ndarray
+            Vetor com a coordenada do eixo ortogonal de cada amostra.
+        """
+        w_unit = self._w / self._norm_w
+        residuo = z - np.outer(z @ w_unit, w_unit)
+        centrado = residuo - residuo.mean(axis=0)
+        try:
+            _, _, vt = np.linalg.svd(centrado, full_matrices=False)
+            direcao = vt[0]
+        except np.linalg.LinAlgError:
+            return np.zeros(z.shape[0])
+        return residuo @ direcao

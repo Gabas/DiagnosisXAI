@@ -153,16 +153,14 @@ class ReportWindow(ctk.CTkToplevel):
         tree_frame.grid_columnconfigure(0, weight=1)
         tree_frame.grid_rowconfigure(0, weight=1)
 
-        colunas = ("paciente", "diagnostico", "certeza", "fatores")
+        colunas = ("paciente", "diagnostico", "fatores")
         self._tree = ttk.Treeview(tree_frame, columns=colunas, show="headings")
         self._tree.heading("paciente", text="Paciente")
         self._tree.heading("diagnostico", text="Diagnóstico")
-        self._tree.heading("certeza", text="Certeza")
         self._tree.heading("fatores", text="Principais fatores")
         self._tree.column("paciente", width=70, anchor="center", stretch=False)
         self._tree.column("diagnostico", width=90, anchor="center", stretch=False)
-        self._tree.column("certeza", width=70, anchor="center", stretch=False)
-        self._tree.column("fatores", width=240, anchor="w")
+        self._tree.column("fatores", width=300, anchor="w")
         self._tree.grid(row=0, column=0, sticky="nsew")
 
         scrollbar = ctk.CTkScrollbar(tree_frame, command=self._tree.yview)
@@ -177,7 +175,7 @@ class ReportWindow(ctk.CTkToplevel):
             principais = ", ".join(c['feature'] for c in e['contribuicoes'][:2]) or "—"
             self._tree.insert(
                 "", "end", iid=str(e['indice']),
-                values=(e['indice'], e['classe'], f"{e['certeza']:.0f}%", principais),
+                values=(e['indice'], e['classe'], principais),
                 tags=(e['classe'],),
             )
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
@@ -228,7 +226,7 @@ class ReportWindow(ctk.CTkToplevel):
         """
         linhas = [
             f"PACIENTE {e['indice']}",
-            f"Diagnóstico da IA: {e['classe']}  (certeza {e['certeza']:.0f}%)",
+            f"Diagnóstico da IA: {e['classe']}",
             "",
             "Características que mais pesaram nesta decisão:",
         ]

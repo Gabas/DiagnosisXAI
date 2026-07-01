@@ -38,7 +38,8 @@ class HistoryManager:
             return json.load(f)
 
     def save_session(self, arquivo: str, modelo: str, total: int,
-                     malignos: int | None, benignos: int | None):
+                     malignos: int | None, benignos: int | None,
+                     relatorio: dict | None = None):
         """
         Salva uma nova sessão de diagnóstico no topo do histórico.
 
@@ -54,6 +55,10 @@ class HistoryManager:
             Contagem de diagnósticos Maligno. None para modo comparação.
         benignos : int ou None
             Contagem de diagnósticos Benigno. None para modo comparação.
+        relatorio : dict ou None, optional
+            Relatório de explicabilidade da Árvore de Decisão, no formato
+            {'importancias': [...], 'explicacoes': [...]}. None quando a árvore
+            não foi executada. Fica embutido na sessão e é removido junto com ela.
         """
         entries = self.load()
         entries.insert(0, {
@@ -64,6 +69,7 @@ class HistoryManager:
             'malignos': malignos,
             'benignos': benignos,
             'acuracia': None,
+            'relatorio': relatorio,
         })
         self._write(entries)
 
@@ -80,6 +86,21 @@ class HistoryManager:
         entries = self.load()
         if entries:
             entries[0]['acuracia'] = acuracia
+            self._write(entries)
+
+    def delete(self, index: int):
+        """
+        Remove uma única sessão do histórico pela sua posição na lista.
+
+        Parameters
+        ----------
+        index : int
+            Índice (base zero) da sessão a remover, na mesma ordem retornada
+            por load() — da mais recente para a mais antiga.
+        """
+        entries = self.load()
+        if 0 <= index < len(entries):
+            del entries[index]
             self._write(entries)
 
     def clear(self):

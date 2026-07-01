@@ -11,9 +11,10 @@ from core.batch_processor import BatchProcessor
 from core.history_manager import HistoryManager
 from core.inference import ModelLoader
 from core.predictor import PredictorEngine
-from core.xai_generator import DecisionTreeExplainer
+from core.xai_generator import DecisionTreeExplainer, LogisticRegressionExplainer
 from utils.ui import ScrollableFrame, bind_treeview_mousewheel
 from views.report_window import ReportWindow
+from views.report_window_lr import LogisticReportWindow
 
 class PredictView(ctk.CTkFrame):
     """
@@ -30,6 +31,8 @@ class PredictView(ctk.CTkFrame):
     """
 
     NOME_ARVORE = "Árvore de Decisão"
+    NOME_LOGISTICA = "Regressão Logística"
+    NOME_TODOS = "Todos (Comparação)"
 
     def __init__(self, master, **kwargs):
         """
@@ -52,8 +55,8 @@ class PredictView(ctk.CTkFrame):
         self.df_limpo = None
         self.df_resultado = None
 
-        self._ultima_explicacao = None
-        self._report_window = None
+        self._ultima_explicacao = {}
+        self._report_windows = {}
 
         self.model_loader = ModelLoader()
         self.predictor = PredictorEngine(self.model_loader)
@@ -114,13 +117,16 @@ class PredictView(ctk.CTkFrame):
         # --- Passo 5: Explicabilidade (XAI) ---
         xai_frame = ctk.CTkFrame(container)
         xai_frame.grid(row=5, column=0, padx=20, pady=5, sticky="nsew")
-        ctk.CTkLabel(xai_frame, text="Passo 5: Explicabilidade (XAI) — Árvore de Decisão", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, columnspan=2, padx=20, pady=(10, 5), sticky="w")
+        ctk.CTkLabel(xai_frame, text="Passo 5: Explicabilidade (XAI)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, columnspan=3, padx=20, pady=(10, 5), sticky="w")
 
-        self.btn_report = ctk.CTkButton(xai_frame, text="Ver Relatório de Decisão", state="disabled", command=self.show_report, fg_color="#2980b9", hover_color="#3498db")
-        self.btn_report.grid(row=1, column=0, padx=20, pady=10, sticky="w")
+        self.btn_report_arvore = ctk.CTkButton(xai_frame, text="Relatório — Árvore de Decisão", state="disabled", command=lambda: self._abrir_relatorio('arvore'), fg_color="#2980b9", hover_color="#3498db")
+        self.btn_report_arvore.grid(row=1, column=0, padx=(20, 10), pady=10, sticky="w")
 
-        self.lbl_report_hint = ctk.CTkLabel(xai_frame, text="Disponível após executar a Árvore de Decisão (ou 'Todos').", font=ctk.CTkFont(size=12, slant="italic"), text_color="gray")
-        self.lbl_report_hint.grid(row=1, column=1, padx=20, pady=10, sticky="w")
+        self.btn_report_logistica = ctk.CTkButton(xai_frame, text="Relatório — Regressão Logística", state="disabled", command=lambda: self._abrir_relatorio('logistica'), fg_color="#2980b9", hover_color="#3498db")
+        self.btn_report_logistica.grid(row=1, column=1, padx=10, pady=10, sticky="w")
+
+        self.lbl_report_hint = ctk.CTkLabel(xai_frame, text="Disponível após executar a Árvore de Decisão ou a Regressão Logística (ou 'Todos').", font=ctk.CTkFont(size=12, slant="italic"), text_color="gray")
+        self.lbl_report_hint.grid(row=2, column=0, columnspan=3, padx=20, pady=(0, 10), sticky="w")
 
         # --- Tabela de Preview ---
         self.preview_frame = ctk.CTkFrame(container)
@@ -228,7 +234,10 @@ class PredictView(ctk.CTkFrame):
                 self.btn_audit.configure(state="normal")
                 self.lbl_audit_results.configure(text="")
 
-                # Persiste a sessão no histórico
+                # Gera e exibe a explicabilidade da Árvore de Decisão ao final
+                self._preparar_relatorio(modelo_escolhido)
+
+                # Persiste a sessão no histórico, embutindo o relatório quando houver
                 arquivo = self.file_path_var.get().replace("Arquivo selecionado: ", "")
                 total = len(self.df_resultado)
                 if 'Diagnóstico_IA' in self.df_resultado.columns:
@@ -236,69 +245,103 @@ class PredictView(ctk.CTkFrame):
                     benignos = int((self.df_resultado['Diagnóstico_IA'] == 'Benigno').sum())
                 else:
                     malignos = benignos = None
-                self._history_manager.save_session(arquivo, modelo_escolhido, total, malignos, benignos)
-
-                # Gera e exibe a explicabilidade da Árvore de Decisão ao final
-                self._preparar_relatorio(modelo_escolhido)
+                self._history_manager.save_session(
+                    arquivo, modelo_escolhido, total, malignos, benignos,
+                    self._ultima_explicacao or None,
+                )
             except Exception as e:
                 print(f"Erro durante a inferência: {e}")
 
     def _reset_relatorio(self):
-        """Limpa o estado do relatório de explicabilidade e desabilita o Passo 5."""
-        self._ultima_explicacao = None
-        self.btn_report.configure(state="disabled")
+        """Limpa o estado dos relatórios de explicabilidade e desabilita o Passo 5."""
+        self._ultima_explicacao = {}
+        self.btn_report_arvore.configure(state="disabled")
+        self.btn_report_logistica.configure(state="disabled")
         self.lbl_report_hint.configure(
-            text="Disponível após executar a Árvore de Decisão (ou 'Todos').",
+            text="Disponível após executar a Árvore de Decisão ou a Regressão Logística (ou 'Todos').",
             text_color="gray",
         )
 
     def _preparar_relatorio(self, modelo_escolhido: str):
         """
-        Gera a explicação da Árvore de Decisão e abre o relatório, quando aplicável.
+        Gera as explicações dos modelos interpretáveis executados e abre o relatório.
 
-        A explicabilidade só é produzida quando a Árvore de Decisão foi de fato
-        executada — seja selecionada isoladamente ou dentro do modo de comparação.
+        A explicabilidade é produzida para a Árvore de Decisão e para a Regressão
+        Logística sempre que cada uma é executada — isoladamente ou no modo de
+        comparação. Se apenas um relatório estiver disponível, ele é aberto
+        automaticamente; havendo dois, o usuário escolhe qual abrir.
 
         Parameters
         ----------
         modelo_escolhido : str
             Nome do modelo selecionado pelo utilizador no Passo 3.
         """
-        self._ultima_explicacao = None
+        self._ultima_explicacao = {}
 
-        arvore_executada = modelo_escolhido in (self.NOME_ARVORE, "Todos (Comparação)")
-        if not arvore_executada or self.df_limpo is None:
+        if self.df_limpo is None or self.df_padronizado is None:
             self._reset_relatorio()
             return
 
+        todos = modelo_escolhido == self.NOME_TODOS
         try:
-            modelo_dt = self.model_loader.models.get(self.NOME_ARVORE)
-            explainer = DecisionTreeExplainer(modelo_dt, self.model_loader.feature_names)
-            self._ultima_explicacao = {
-                'importancias': explainer.global_importances(top_n=10),
-                'explicacoes': explainer.explain(self.df_limpo),
-            }
-            self.btn_report.configure(state="normal")
-            self.lbl_report_hint.configure(text="Relatório pronto.", text_color="#2ecc71")
-            self.show_report()
+            if todos or modelo_escolhido == self.NOME_ARVORE:
+                modelo_dt = self.model_loader.models.get(self.NOME_ARVORE)
+                exp = DecisionTreeExplainer(modelo_dt, self.model_loader.feature_names)
+                self._ultima_explicacao['arvore'] = {
+                    'importancias': exp.global_importances(top_n=10),
+                    'explicacoes': exp.explain(self.df_limpo),
+                }
+            if todos or modelo_escolhido == self.NOME_LOGISTICA:
+                modelo_lr = self.model_loader.models.get(self.NOME_LOGISTICA)
+                exp = LogisticRegressionExplainer(modelo_lr, self.model_loader.feature_names)
+                self._ultima_explicacao['logistica'] = {
+                    'importancias': exp.global_importances(top_n=10),
+                    'explicacoes': exp.explain(self.df_padronizado, self.df_limpo),
+                }
         except Exception as e:
-            self.btn_report.configure(state="disabled")
+            self._reset_relatorio()
             self.lbl_report_hint.configure(
                 text=f"Erro ao gerar explicação: {e}", text_color="#e74c3c"
             )
-
-    def show_report(self):
-        """Abre (ou recria) a janela de relatório de explicabilidade da árvore."""
-        if not self._ultima_explicacao:
             return
 
-        if self._report_window is not None and self._report_window.winfo_exists():
-            self._report_window.destroy()
+        self.btn_report_arvore.configure(
+            state="normal" if 'arvore' in self._ultima_explicacao else "disabled")
+        self.btn_report_logistica.configure(
+            state="normal" if 'logistica' in self._ultima_explicacao else "disabled")
 
-        self._report_window = ReportWindow(
+        disponiveis = list(self._ultima_explicacao.keys())
+        if len(disponiveis) == 1:
+            self.lbl_report_hint.configure(text="Relatório pronto.", text_color="#2ecc71")
+            self._abrir_relatorio(disponiveis[0])
+        elif len(disponiveis) > 1:
+            self.lbl_report_hint.configure(
+                text="Relatórios prontos — escolha um acima.", text_color="#2ecc71")
+        else:
+            self._reset_relatorio()
+
+    def _abrir_relatorio(self, tipo: str):
+        """
+        Abre (ou recria) a janela do relatório de explicabilidade do tipo indicado.
+
+        Parameters
+        ----------
+        tipo : str
+            'arvore' para a Árvore de Decisão ou 'logistica' para a Regressão Logística.
+        """
+        dados = self._ultima_explicacao.get(tipo)
+        if not dados:
+            return
+
+        janela = self._report_windows.get(tipo)
+        if janela is not None and janela.winfo_exists():
+            janela.destroy()
+
+        Classe = ReportWindow if tipo == 'arvore' else LogisticReportWindow
+        self._report_windows[tipo] = Classe(
             self,
-            importancias=self._ultima_explicacao['importancias'],
-            explicacoes=self._ultima_explicacao['explicacoes'],
+            importancias=dados['importancias'],
+            explicacoes=dados['explicacoes'],
         )
 
     def run_audit(self):
