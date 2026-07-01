@@ -7,6 +7,7 @@
 numpy>=1.26
 pandas>=2.1
 scikit-learn>=1.4
+cloudpickle>=3.0        # serializa os explicadores (XAI) do notebook para o app
 
 # --- Interface gráfica (app) --------------------------------
 customtkinter>=5.2

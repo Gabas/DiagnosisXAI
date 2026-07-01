@@ -14,17 +14,24 @@ class ScrollableFrame(ctk.CTkScrollableFrame):
     """
     CTkScrollableFrame com suporte à roda do mouse no Linux (X11).
 
-    O customtkinter 5.2.2 vincula apenas o evento ``<MouseWheel>``, emitido
-    no Windows e no macOS. No Linux/X11 a rolagem por roda gera os eventos
-    ``<Button-4>`` (cima) e ``<Button-5>`` (baixo), que ficavam sem tratamento —
-    deixando a barra de rolagem inerte à roda. Esta subclasse acrescenta esses
-    vínculos sem alterar o comportamento nas demais plataformas.
+    O customtkinter 5.x vincula apenas o evento ``<MouseWheel>`` (emitido no
+    Windows e no macOS). No Linux/X11 a rolagem por roda gera ``<Button-4>``
+    (cima) e ``<Button-5>`` (baixo), que ficavam sem tratamento — deixando a
+    barra de rolagem inerte à roda. Esta subclasse acrescenta esses vínculos.
+
+    A partir do customtkinter 6.0, o próprio widget já trata ``<Button-4>``/
+    ``<Button-5>`` nativamente; nesse caso o workaround é desativado para
+    evitar rolagem dupla. A detecção é por presença do método interno
+    ``check_if_master_is_canvas`` (existente apenas nas versões 5.x).
     """
 
     def __init__(self, *args, **kwargs):
-        """Inicializa o frame rolável e registra a roda do mouse no Linux."""
+        """Inicializa o frame rolável e registra a roda do mouse no Linux (5.x)."""
         super().__init__(*args, **kwargs)
         if sys.platform.startswith("win") or sys.platform == "darwin":
+            return
+        # customtkinter >= 6.0 já trata a roda no Linux — nada a fazer.
+        if not hasattr(self, "check_if_master_is_canvas"):
             return
         self.bind_all("<Button-4>", self._linux_mouse_wheel, add="+")
         self.bind_all("<Button-5>", self._linux_mouse_wheel, add="+")

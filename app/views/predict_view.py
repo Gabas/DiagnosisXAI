@@ -11,7 +11,6 @@ from core.batch_processor import BatchProcessor
 from core.history_manager import HistoryManager
 from core.inference import ModelLoader
 from core.predictor import PredictorEngine
-from core.xai_generator import DecisionTreeExplainer, LogisticRegressionExplainer
 from utils.ui import ScrollableFrame, bind_treeview_mousewheel
 from views.report_window import ReportWindow
 from views.report_window_lr import LogisticReportWindow
@@ -283,17 +282,16 @@ class PredictView(ctk.CTkFrame):
             return
 
         todos = modelo_escolhido == self.NOME_TODOS
+        explicadores = self.model_loader.explainers
         try:
-            if todos or modelo_escolhido == self.NOME_ARVORE:
-                modelo_dt = self.model_loader.models.get(self.NOME_ARVORE)
-                exp = DecisionTreeExplainer(modelo_dt, self.model_loader.feature_names)
+            exp = explicadores.get('arvore')
+            if exp is not None and (todos or modelo_escolhido == self.NOME_ARVORE):
                 self._ultima_explicacao['arvore'] = {
                     'importancias': exp.global_importances(top_n=10),
                     'explicacoes': exp.explain(self.df_limpo),
                 }
-            if todos or modelo_escolhido == self.NOME_LOGISTICA:
-                modelo_lr = self.model_loader.models.get(self.NOME_LOGISTICA)
-                exp = LogisticRegressionExplainer(modelo_lr, self.model_loader.feature_names)
+            exp = explicadores.get('logistica')
+            if exp is not None and (todos or modelo_escolhido == self.NOME_LOGISTICA):
                 self._ultima_explicacao['logistica'] = {
                     'importancias': exp.global_importances(top_n=10),
                     'explicacoes': exp.explain(self.df_padronizado, self.df_limpo),
