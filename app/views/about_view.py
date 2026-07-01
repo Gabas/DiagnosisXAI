@@ -4,6 +4,7 @@ Módulo contendo a aba de informações sobre o projeto e a base de dados.
 
 import customtkinter as ctk
 from utils.ui import ScrollableFrame
+from views.info_window import InfoWindow
 
 
 class AboutView(ctk.CTkFrame):
@@ -28,6 +29,7 @@ class AboutView(ctk.CTkFrame):
         super().__init__(master, corner_radius=0, fg_color="transparent", **kwargs)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
+        self._info_window = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -174,13 +176,13 @@ class AboutView(ctk.CTkFrame):
         ).pack(anchor="w", padx=20, pady=(16, 10))
 
         modelos = [
-            ("Random Forest (RF)",            "Ensemble de árvores de decisão com bagging"),
-            ("Support Vector Machine (SVM)",  "Hiperplano de separação com kernel RBF"),
-            ("Regressão Logística (LR)",       "Modelo linear probabilístico"),
-            ("K-Nearest Neighbors (KNN)",      "Classificação por proximidade entre amostras"),
-            ("Árvore de Decisão (DT)",         "Regras de decisão binárias interpretáveis"),
+            ("rf",  "Random Forest (RF)",            "Ensemble de árvores de decisão com bagging"),
+            ("svm", "Support Vector Machine (SVM)",  "Hiperplano de separação com kernel RBF"),
+            ("lr",  "Regressão Logística (LR)",       "Modelo linear probabilístico"),
+            ("knn", "K-Nearest Neighbors (KNN)",      "Classificação por proximidade entre amostras"),
+            ("dt",  "Árvore de Decisão (DT)",         "Regras de decisão binárias interpretáveis"),
         ]
-        for nome, desc in modelos:
+        for chave, nome, desc in modelos:
             item = ctk.CTkFrame(card, fg_color=("gray85", "gray20"), corner_radius=6)
             item.pack(fill="x", padx=20, pady=4)
             ctk.CTkLabel(
@@ -190,7 +192,12 @@ class AboutView(ctk.CTkFrame):
             ctk.CTkLabel(
                 item, text=desc,
                 font=ctk.CTkFont(size=11), text_color="gray", anchor="w"
+            ).pack(anchor="w", padx=12, pady=(0, 2))
+            ctk.CTkLabel(
+                item, text="Ver detalhes  ›",
+                font=ctk.CTkFont(size=11, weight="bold"), text_color="#3498db", anchor="w"
             ).pack(anchor="w", padx=12, pady=(0, 8))
+            self._tornar_clicavel(item, chave)
 
         ctk.CTkFrame(card, height=16, fg_color="transparent").pack()
 
@@ -215,6 +222,7 @@ class AboutView(ctk.CTkFrame):
 
         tecnologias = [
             (
+                "shap",
                 "SHAP",
                 "SHapley Additive exPlanations",
                 "Atribui a cada característica morfológica uma contribuição marginal para a predição, "
@@ -222,13 +230,14 @@ class AboutView(ctk.CTkFrame):
                 "quais biomarcadores mais influenciaram o diagnóstico de cada paciente.",
             ),
             (
+                "umap",
                 "UMAP",
                 "Uniform Manifold Approximation and Projection",
                 "Reduz a dimensionalidade dos 30 atributos para 2D, permitindo visualizar a "
                 "separabilidade geométrica entre tumores benignos e malignos no espaço de características.",
             ),
         ]
-        for sigla, nome_completo, descricao in tecnologias:
+        for chave, sigla, nome_completo, descricao in tecnologias:
             item = ctk.CTkFrame(card, fg_color=("gray85", "gray20"), corner_radius=6)
             item.pack(fill="x", padx=20, pady=4)
             header = ctk.CTkFrame(item, fg_color="transparent")
@@ -245,6 +254,59 @@ class AboutView(ctk.CTkFrame):
                 item, text=descricao,
                 font=ctk.CTkFont(size=12), text_color="gray",
                 anchor="w", justify="left", wraplength=820
+            ).pack(anchor="w", padx=12, pady=(0, 4))
+            ctk.CTkLabel(
+                item, text="Ver detalhes  ›",
+                font=ctk.CTkFont(size=11, weight="bold"), text_color="#3498db", anchor="w"
             ).pack(anchor="w", padx=12, pady=(0, 10))
+            self._tornar_clicavel(item, chave)
 
         ctk.CTkFrame(card, height=16, fg_color="transparent").pack()
+
+    def _tornar_clicavel(self, item, chave: str):
+        """
+        Torna um item (e todos os seus filhos) clicável, abrindo os detalhes.
+
+        Aplica também um leve realce ao passar o mouse, sinalizando que o item
+        é interativo.
+
+        Parameters
+        ----------
+        item : ctk.CTkFrame
+            Frame do item a tornar clicável.
+        chave : str
+            Identificador do conteúdo a exibir (índice em CONTEUDO).
+        """
+        cor_normal = ("gray85", "gray20")
+        cor_hover = ("gray80", "gray28")
+
+        def clicar(_evento, k=chave):
+            self._abrir_info(k)
+
+        def entrar(_evento):
+            item.configure(fg_color=cor_hover)
+
+        def sair(_evento):
+            item.configure(fg_color=cor_normal)
+
+        def aplicar(widget):
+            widget.bind("<Button-1>", clicar)
+            widget.bind("<Enter>", entrar)
+            widget.bind("<Leave>", sair)
+            for filho in widget.winfo_children():
+                aplicar(filho)
+
+        aplicar(item)
+
+    def _abrir_info(self, chave: str):
+        """
+        Abre (ou recria) a janela de detalhes do modelo ou tecnologia.
+
+        Parameters
+        ----------
+        chave : str
+            Identificador do conteúdo em CONTEUDO.
+        """
+        if self._info_window is not None and self._info_window.winfo_exists():
+            self._info_window.destroy()
+        self._info_window = InfoWindow(self, chave)
