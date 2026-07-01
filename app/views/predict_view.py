@@ -14,6 +14,7 @@ from core.predictor import PredictorEngine
 from utils.ui import ScrollableFrame, bind_treeview_mousewheel
 from views.report_window import ReportWindow
 from views.report_window_lr import LogisticReportWindow
+from views.report_window_knn import KNNReportWindow
 
 class PredictView(ctk.CTkFrame):
     """
@@ -31,7 +32,15 @@ class PredictView(ctk.CTkFrame):
 
     NOME_ARVORE = "Árvore de Decisão"
     NOME_LOGISTICA = "Regressão Logística"
+    NOME_KNN = "KNN"
     NOME_TODOS = "Todos (Comparação)"
+
+    # Mapa: tipo de relatório -> classe da janela correspondente.
+    _CLASSES_RELATORIO = {
+        'arvore': ReportWindow,
+        'logistica': LogisticReportWindow,
+        'knn': KNNReportWindow,
+    }
 
     def __init__(self, master, **kwargs):
         """
@@ -124,7 +133,10 @@ class PredictView(ctk.CTkFrame):
         self.btn_report_logistica = ctk.CTkButton(xai_frame, text="Relatório — Regressão Logística", state="disabled", command=lambda: self._abrir_relatorio('logistica'), fg_color="#2980b9", hover_color="#3498db")
         self.btn_report_logistica.grid(row=1, column=1, padx=10, pady=10, sticky="w")
 
-        self.lbl_report_hint = ctk.CTkLabel(xai_frame, text="Disponível após executar a Árvore de Decisão ou a Regressão Logística (ou 'Todos').", font=ctk.CTkFont(size=12, slant="italic"), text_color="gray")
+        self.btn_report_knn = ctk.CTkButton(xai_frame, text="Relatório — KNN", state="disabled", command=lambda: self._abrir_relatorio('knn'), fg_color="#2980b9", hover_color="#3498db")
+        self.btn_report_knn.grid(row=1, column=2, padx=10, pady=10, sticky="w")
+
+        self.lbl_report_hint = ctk.CTkLabel(xai_frame, text="Disponível após executar a Árvore de Decisão, a Regressão Logística ou o KNN (ou 'Todos').", font=ctk.CTkFont(size=12, slant="italic"), text_color="gray")
         self.lbl_report_hint.grid(row=2, column=0, columnspan=3, padx=20, pady=(0, 10), sticky="w")
 
         # --- Tabela de Preview ---
@@ -256,8 +268,9 @@ class PredictView(ctk.CTkFrame):
         self._ultima_explicacao = {}
         self.btn_report_arvore.configure(state="disabled")
         self.btn_report_logistica.configure(state="disabled")
+        self.btn_report_knn.configure(state="disabled")
         self.lbl_report_hint.configure(
-            text="Disponível após executar a Árvore de Decisão ou a Regressão Logística (ou 'Todos').",
+            text="Disponível após executar a Árvore de Decisão, a Regressão Logística ou o KNN (ou 'Todos').",
             text_color="gray",
         )
 
@@ -265,10 +278,10 @@ class PredictView(ctk.CTkFrame):
         """
         Gera as explicações dos modelos interpretáveis executados e abre o relatório.
 
-        A explicabilidade é produzida para a Árvore de Decisão e para a Regressão
-        Logística sempre que cada uma é executada — isoladamente ou no modo de
-        comparação. Se apenas um relatório estiver disponível, ele é aberto
-        automaticamente; havendo dois, o usuário escolhe qual abrir.
+        A explicabilidade é produzida para a Árvore de Decisão, a Regressão
+        Logística e o KNN sempre que cada um é executado — isoladamente ou no
+        modo de comparação. Se apenas um relatório estiver disponível, ele é
+        aberto automaticamente; havendo mais de um, o usuário escolhe qual abrir.
 
         Parameters
         ----------
@@ -296,6 +309,13 @@ class PredictView(ctk.CTkFrame):
                     'importancias': exp.global_importances(top_n=10),
                     'explicacoes': exp.explain(self.df_padronizado, self.df_limpo),
                 }
+            exp = explicadores.get('knn')
+            if exp is not None and (todos or modelo_escolhido == self.NOME_KNN):
+                self._ultima_explicacao['knn'] = {
+                    'importancias': exp.global_importances(top_n=10),
+                    'explicacoes': exp.explain(self.df_padronizado),
+                    'contexto': exp.contexto(),
+                }
         except Exception as e:
             self._reset_relatorio()
             self.lbl_report_hint.configure(
@@ -307,6 +327,8 @@ class PredictView(ctk.CTkFrame):
             state="normal" if 'arvore' in self._ultima_explicacao else "disabled")
         self.btn_report_logistica.configure(
             state="normal" if 'logistica' in self._ultima_explicacao else "disabled")
+        self.btn_report_knn.configure(
+            state="normal" if 'knn' in self._ultima_explicacao else "disabled")
 
         disponiveis = list(self._ultima_explicacao.keys())
         if len(disponiveis) == 1:
@@ -325,7 +347,7 @@ class PredictView(ctk.CTkFrame):
         Parameters
         ----------
         tipo : str
-            'arvore' para a Árvore de Decisão ou 'logistica' para a Regressão Logística.
+            'arvore', 'logistica' ou 'knn'.
         """
         dados = self._ultima_explicacao.get(tipo)
         if not dados:
@@ -335,12 +357,7 @@ class PredictView(ctk.CTkFrame):
         if janela is not None and janela.winfo_exists():
             janela.destroy()
 
-        Classe = ReportWindow if tipo == 'arvore' else LogisticReportWindow
-        self._report_windows[tipo] = Classe(
-            self,
-            importancias=dados['importancias'],
-            explicacoes=dados['explicacoes'],
-        )
+        self._report_windows[tipo] = self._CLASSES_RELATORIO[tipo](self, **dados)
 
     def run_audit(self):
         

@@ -57,5 +57,6 @@ class ModelLoader:
                 # O app apenas os utiliza — a lógica de explicabilidade vive no notebook.
                 self.explainers['arvore'] = data.get('explainer_dt')
                 self.explainers['logistica'] = data.get('explainer_lr')
+                self.explainers['knn'] = data.get('explainer_knn')
             else:
                 raise ValueError("O arquivo .pkl está num formato antigo. Execute o notebook novamente.")

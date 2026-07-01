@@ -8,6 +8,7 @@ from core.history_manager import HistoryManager
 from utils.ui import ScrollableFrame
 from views.report_window import ReportWindow
 from views.report_window_lr import LogisticReportWindow
+from views.report_window_knn import KNNReportWindow
 
 
 class HistoryView(ctk.CTkFrame):
@@ -277,6 +278,7 @@ class SessionDetailWindow(ctk.CTkToplevel):
     _TIPOS = {
         'arvore': ("Árvore de Decisão", ReportWindow),
         'logistica': ("Regressão Logística", LogisticReportWindow),
+        'knn': ("KNN", KNNReportWindow),
     }
 
     def __init__(self, master, entry: dict, **kwargs):
@@ -434,8 +436,4 @@ class SessionDetailWindow(ctk.CTkToplevel):
         if self._report_window is not None and self._report_window.winfo_exists():
             self._report_window.destroy()
         _, Classe = self._TIPOS[tipo]
-        self._report_window = Classe(
-            self,
-            importancias=dados.get('importancias', []),
-            explicacoes=dados.get('explicacoes', []),
-        )
+        self._report_window = Classe(self, **dados)
