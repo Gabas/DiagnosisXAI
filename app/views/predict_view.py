@@ -5,6 +5,7 @@ Módulo contendo a interface em etapas para importação, padronização, predi�
 import customtkinter as ctk
 from tkinter import filedialog, ttk
 import os
+import numpy as np
 import pandas as pd
 
 from core.batch_processor import BatchProcessor
@@ -35,11 +36,34 @@ class PredictView(ctk.CTkFrame):
     NOME_KNN = "KNN"
     NOME_TODOS = "Todos (Comparação)"
 
-    # Mapa: tipo de relatório -> classe da janela correspondente.
+    # Mapa: tipo de relatório exato -> classe da janela correspondente.
     _CLASSES_RELATORIO = {
         'arvore': ReportWindow,
         'logistica': LogisticReportWindow,
         'knn': KNNReportWindow,
+    }
+
+    # Nome do modelo (no seletor) <-> chave curta usada no SHAP.
+    _MODELO_KEY = {
+        "Árvore de Decisão": 'dt',
+        "Random Forest": 'rf',
+        "Regressão Logística": 'lr',
+        "SVM": 'svm',
+        "KNN": 'knn',
+    }
+    _KEY_MODELO = {v: k for k, v in _MODELO_KEY.items()}
+
+    # Rótulos exibidos no menu de relatórios do Passo 5.
+    _ROTULOS_RELATORIO = {
+        'arvore': "Árvore de Decisão — regras",
+        'logistica': "Regressão Logística — contribuições",
+        'knn': "KNN — vizinhos",
+        'shap_dt': "Árvore de Decisão — SHAP",
+        'shap_rf': "Random Forest — SHAP",
+        'shap_lr': "Regressão Logística — SHAP",
+        'shap_svm': "SVM — SHAP",
+        'shap_knn': "KNN — SHAP",
+        'umap': "Mapa Populacional — UMAP",
     }
 
     def __init__(self, master, **kwargs):
@@ -65,6 +89,9 @@ class PredictView(ctk.CTkFrame):
 
         self._ultima_explicacao = {}
         self._report_windows = {}
+        self._shap_disponiveis = []
+        self._opcoes_relatorio = {}
+        self._shap_cache = {}
 
         self.model_loader = ModelLoader()
         self.predictor = PredictorEngine(self.model_loader)
@@ -125,19 +152,17 @@ class PredictView(ctk.CTkFrame):
         # --- Passo 5: Explicabilidade (XAI) ---
         xai_frame = ctk.CTkFrame(container)
         xai_frame.grid(row=5, column=0, padx=20, pady=5, sticky="nsew")
-        ctk.CTkLabel(xai_frame, text="Passo 5: Explicabilidade (XAI)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, columnspan=3, padx=20, pady=(10, 5), sticky="w")
+        ctk.CTkLabel(xai_frame, text="Passo 5: Explicabilidade (XAI)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=20, pady=(10, 5), sticky="w")
 
-        self.btn_report_arvore = ctk.CTkButton(xai_frame, text="Relatório — Árvore de Decisão", state="disabled", command=lambda: self._abrir_relatorio('arvore'), fg_color="#2980b9", hover_color="#3498db")
-        self.btn_report_arvore.grid(row=1, column=0, padx=(20, 10), pady=10, sticky="w")
+        sel_frame = ctk.CTkFrame(xai_frame, fg_color="transparent")
+        sel_frame.grid(row=1, column=0, padx=20, pady=(0, 6), sticky="w")
+        self.report_menu = ctk.CTkOptionMenu(sel_frame, values=["—"], state="disabled", width=340)
+        self.report_menu.grid(row=0, column=0, padx=(0, 10), pady=6, sticky="w")
+        self.btn_abrir_relatorio = ctk.CTkButton(sel_frame, text="Abrir Relatório", state="disabled", command=self._abrir_relatorio_selecionado, fg_color="#2980b9", hover_color="#3498db")
+        self.btn_abrir_relatorio.grid(row=0, column=1, pady=6, sticky="w")
 
-        self.btn_report_logistica = ctk.CTkButton(xai_frame, text="Relatório — Regressão Logística", state="disabled", command=lambda: self._abrir_relatorio('logistica'), fg_color="#2980b9", hover_color="#3498db")
-        self.btn_report_logistica.grid(row=1, column=1, padx=10, pady=10, sticky="w")
-
-        self.btn_report_knn = ctk.CTkButton(xai_frame, text="Relatório — KNN", state="disabled", command=lambda: self._abrir_relatorio('knn'), fg_color="#2980b9", hover_color="#3498db")
-        self.btn_report_knn.grid(row=1, column=2, padx=10, pady=10, sticky="w")
-
-        self.lbl_report_hint = ctk.CTkLabel(xai_frame, text="Disponível após executar a Árvore de Decisão, a Regressão Logística ou o KNN (ou 'Todos').", font=ctk.CTkFont(size=12, slant="italic"), text_color="gray")
-        self.lbl_report_hint.grid(row=2, column=0, columnspan=3, padx=20, pady=(0, 10), sticky="w")
+        self.lbl_report_hint = ctk.CTkLabel(xai_frame, text="Disponível após processar o diagnóstico.", font=ctk.CTkFont(size=12, slant="italic"), text_color="gray")
+        self.lbl_report_hint.grid(row=2, column=0, padx=20, pady=(0, 10), sticky="w")
 
         # --- Tabela de Preview ---
         self.preview_frame = ctk.CTkFrame(container)
@@ -266,32 +291,31 @@ class PredictView(ctk.CTkFrame):
     def _reset_relatorio(self):
         """Limpa o estado dos relatórios de explicabilidade e desabilita o Passo 5."""
         self._ultima_explicacao = {}
-        self.btn_report_arvore.configure(state="disabled")
-        self.btn_report_logistica.configure(state="disabled")
-        self.btn_report_knn.configure(state="disabled")
+        self._shap_disponiveis = []
+        self._opcoes_relatorio = {}
+        self.report_menu.configure(values=["—"], state="disabled")
+        self.report_menu.set("—")
+        self.btn_abrir_relatorio.configure(state="disabled")
         self.lbl_report_hint.configure(
-            text="Disponível após executar a Árvore de Decisão, a Regressão Logística ou o KNN (ou 'Todos').",
-            text_color="gray",
-        )
+            text="Disponível após processar o diagnóstico.", text_color="gray")
 
     def _preparar_relatorio(self, modelo_escolhido: str):
         """
-        Gera as explicações dos modelos interpretáveis executados e abre o relatório.
+        Gera as explicações dos modelos executados e popula o menu de relatórios.
 
-        A explicabilidade é produzida para a Árvore de Decisão, a Regressão
-        Logística e o KNN sempre que cada um é executado — isoladamente ou no
-        modo de comparação. Se apenas um relatório estiver disponível, ele é
-        aberto automaticamente; havendo mais de um, o usuário escolhe qual abrir.
+        Os explicadores exatos (Árvore, Regressão Logística e KNN) são calculados
+        na hora. Os relatórios SHAP ficam disponíveis para todos os modelos que
+        rodaram, mas são calculados sob demanda ao serem abertos (lazy). Havendo
+        um único relatório, ele é aberto automaticamente.
 
         Parameters
         ----------
         modelo_escolhido : str
             Nome do modelo selecionado pelo utilizador no Passo 3.
         """
-        self._ultima_explicacao = {}
+        self._reset_relatorio()
 
         if self.df_limpo is None or self.df_padronizado is None:
-            self._reset_relatorio()
             return
 
         todos = modelo_escolhido == self.NOME_TODOS
@@ -300,7 +324,7 @@ class PredictView(ctk.CTkFrame):
             exp = explicadores.get('arvore')
             if exp is not None and (todos or modelo_escolhido == self.NOME_ARVORE):
                 self._ultima_explicacao['arvore'] = {
-                    'importancias': exp.global_importances(top_n=10),
+                    'importancias': self._importancias_arvore(exp),
                     'explicacoes': exp.explain(self.df_limpo),
                 }
             exp = explicadores.get('logistica')
@@ -319,45 +343,222 @@ class PredictView(ctk.CTkFrame):
         except Exception as e:
             self._reset_relatorio()
             self.lbl_report_hint.configure(
-                text=f"Erro ao gerar explicação: {e}", text_color="#e74c3c"
-            )
+                text=f"Erro ao gerar explicação: {e}", text_color="#e74c3c")
             return
 
-        self.btn_report_arvore.configure(
-            state="normal" if 'arvore' in self._ultima_explicacao else "disabled")
-        self.btn_report_logistica.configure(
-            state="normal" if 'logistica' in self._ultima_explicacao else "disabled")
-        self.btn_report_knn.configure(
-            state="normal" if 'knn' in self._ultima_explicacao else "disabled")
+        # SHAP: disponível para cada modelo executado que tenha artefatos salvos.
+        if self.model_loader.shap_background is not None:
+            for nome_modelo, key in self._MODELO_KEY.items():
+                if (todos or modelo_escolhido == nome_modelo) \
+                        and key in self.model_loader.shap_importances:
+                    self._shap_disponiveis.append(key)
 
-        disponiveis = list(self._ultima_explicacao.keys())
-        if len(disponiveis) == 1:
+        # Monta as opções do menu: exatos primeiro, depois SHAP.
+        opcoes = {}
+        for tipo in ('arvore', 'logistica', 'knn'):
+            if tipo in self._ultima_explicacao:
+                opcoes[self._ROTULOS_RELATORIO[tipo]] = tipo
+        for key in self._shap_disponiveis:
+            tipo = f'shap_{key}'
+            opcoes[self._ROTULOS_RELATORIO[tipo]] = tipo
+
+        # Mapa populacional UMAP: independe do modelo, exige apenas o embedding.
+        if self.model_loader.umap_train_2d is not None:
+            opcoes[self._ROTULOS_RELATORIO['umap']] = 'umap'
+
+        self._opcoes_relatorio = opcoes
+        if not opcoes:
+            return
+
+        labels = list(opcoes.keys())
+        self.report_menu.configure(values=labels, state="normal")
+        self.report_menu.set(labels[0])
+        self.btn_abrir_relatorio.configure(state="normal")
+
+        if len(labels) == 1:
             self.lbl_report_hint.configure(text="Relatório pronto.", text_color="#2ecc71")
-            self._abrir_relatorio(disponiveis[0])
-        elif len(disponiveis) > 1:
-            self.lbl_report_hint.configure(
-                text="Relatórios prontos — escolha um acima.", text_color="#2ecc71")
+            self._abrir_relatorio(opcoes[labels[0]])
         else:
-            self._reset_relatorio()
+            self.lbl_report_hint.configure(
+                text=f"{len(labels)} relatórios prontos — escolha e clique em Abrir.",
+                text_color="#2ecc71")
+
+    def _importancias_arvore(self, exp) -> list:
+        """
+        Calcula a importância global da Árvore de Decisão em Python puro.
+
+        Reimplementa o cálculo do sklearn (redução de impureza por atributo) a
+        partir dos arrays da árvore, evitando a propriedade nativa
+        ``feature_importances_`` — que, neste ambiente (numpy 2.x), provoca uma
+        falha de memória intermitente dentro do stack gráfico do app.
+
+        Parameters
+        ----------
+        exp : DecisionTreeExplainer
+            Explicador da árvore, do qual se lê a estrutura interna.
+
+        Returns
+        -------
+        list[tuple[str, float]]
+            Pares (característica, importância) com importância > 0, do maior
+            para o menor (top 10).
+        """
+        t = exp._tree
+        feat, cl, cr = t.feature, t.children_left, t.children_right
+        wn, impureza = t.weighted_n_node_samples, t.impurity
+
+        imp = np.zeros(len(exp.feature_names))
+        for node in range(len(feat)):
+            esq = cl[node]
+            if esq != -1:  # nó de decisão (não folha)
+                dir_ = cr[node]
+                imp[feat[node]] += (wn[node] * impureza[node]
+                                    - wn[esq] * impureza[esq]
+                                    - wn[dir_] * impureza[dir_])
+        total = imp.sum()
+        if total > 0:
+            imp = imp / total
+
+        pares = [(exp.feature_names[i], float(imp[i]))
+                 for i in range(len(imp)) if imp[i] > 0]
+        pares.sort(key=lambda p: p[1], reverse=True)
+        return pares[:10]
+
+    def _abrir_relatorio_selecionado(self):
+        """Abre o relatório atualmente selecionado no menu do Passo 5."""
+        tipo = self._opcoes_relatorio.get(self.report_menu.get())
+        if tipo:
+            self._abrir_relatorio(tipo)
 
     def _abrir_relatorio(self, tipo: str):
         """
-        Abre (ou recria) a janela do relatório de explicabilidade do tipo indicado.
+        Abre (ou recria) a janela do relatório indicado (exato ou SHAP).
 
         Parameters
         ----------
         tipo : str
-            'arvore', 'logistica' ou 'knn'.
+            'arvore'/'logistica'/'knn' (exatos) ou 'shap_<modelo>'.
         """
-        dados = self._ultima_explicacao.get(tipo)
-        if not dados:
-            return
-
         janela = self._report_windows.get(tipo)
         if janela is not None and janela.winfo_exists():
             janela.destroy()
 
-        self._report_windows[tipo] = self._CLASSES_RELATORIO[tipo](self, **dados)
+        if tipo == 'umap':
+            self._report_windows['umap'] = self._abrir_umap()
+        elif tipo.startswith('shap_'):
+            self._report_windows[tipo] = self._abrir_shap(tipo[len('shap_'):])
+        else:
+            dados = self._ultima_explicacao.get(tipo)
+            if not dados:
+                return
+            self._report_windows[tipo] = self._CLASSES_RELATORIO[tipo](self, **dados)
+
+    def _abrir_shap(self, key: str):
+        """
+        Constrói (uma vez) o explicador SHAP do modelo e abre a janela SHAP.
+
+        A árvore usa dados brutos; os demais usam dados padronizados.
+
+        Parameters
+        ----------
+        key : str
+            Chave do modelo ('dt', 'rf', 'lr', 'svm' ou 'knn').
+
+        Returns
+        -------
+        ShapReportWindow
+            A janela de relatório SHAP recém-criada.
+        """
+        from core.shap_explainer import ShapExplainer          # imports tardios
+        from views.report_window_shap import ShapReportWindow
+
+        nome_modelo = self._KEY_MODELO[key]
+        modelo = self.model_loader.models.get(nome_modelo)
+        fn = self.model_loader.feature_names
+
+        explainer = self._shap_cache.get(key)
+        if explainer is None:
+            self.lbl_report_hint.configure(text="Preparando SHAP…", text_color="gray")
+            self.update_idletasks()
+            explainer = ShapExplainer(modelo, key, fn, self.model_loader.shap_background)
+            self._shap_cache[key] = explainer
+
+        # A árvore foi treinada em dados brutos; os demais em dados padronizados.
+        entrada = self.df_limpo if key == 'dt' else self.df_padronizado
+        X_scaled = entrada[fn].values
+        valores_reais = self.df_limpo[fn].values
+        indices = list(entrada.index)
+        preds = modelo.predict(X_scaled)
+        pacientes = [
+            {'indice': int(indices[i]),
+             'classe': 'Maligno' if preds[i] == ShapExplainer.CLASSE_MALIGNO else 'Benigno'}
+            for i in range(len(indices))
+        ]
+        importancias = self.model_loader.shap_importances.get(key, [])
+        return ShapReportWindow(
+            self, explainer, X_scaled, valores_reais, pacientes,
+            importancias, self._KEY_MODELO[key])
+
+    def _abrir_umap(self):
+        """
+        Projeta o lote no embedding UMAP do treino e abre o mapa populacional.
+
+        Cada paciente é posicionado pela média ponderada (por distância) das
+        posições dos seus vizinhos de treino no embedding — rápido, determinístico
+        e sem depender do umap em tempo de execução.
+
+        Returns
+        -------
+        UmapMapWindow
+            A janela do mapa recém-criada.
+        """
+        from sklearn.neighbors import NearestNeighbors
+        from views.report_window_umap import UmapMapWindow
+
+        if self.model_loader.umap_train_2d is None or self.model_loader.X_train_scaled is None:
+            self.lbl_report_hint.configure(
+                text="Mapa UMAP indisponível: regenere o wisconsin.pkl pelo notebook.",
+                text_color="#e74c3c")
+            return None
+
+        fn = self.model_loader.feature_names
+        Xtr = np.asarray(self.model_loader.X_train_scaled)
+        emb = np.asarray(self.model_loader.umap_train_2d)
+        Xb = self.df_padronizado[fn].values
+
+        k = min(10, len(Xtr))
+        distancias, vizinhos = NearestNeighbors(n_neighbors=k).fit(Xtr).kneighbors(Xb)
+        pesos = 1.0 / (distancias + 1e-9)
+        pesos /= pesos.sum(axis=1, keepdims=True)
+        batch_2d = np.einsum('nk,nkd->nd', pesos, emb[vizinhos])
+
+        return UmapMapWindow(
+            self, emb, self.model_loader.y_train, batch_2d,
+            self._pacientes_diagnostico())
+
+    def _pacientes_diagnostico(self) -> list:
+        """
+        Monta a lista {'indice', 'classe'} do lote a partir do resultado da IA.
+
+        Para um único modelo usa a coluna 'Diagnóstico_IA'; no modo de comparação
+        ('Todos') usa o voto da maioria entre as colunas dos modelos.
+
+        Returns
+        -------
+        list[dict]
+            Um item por paciente, com índice e classe prevista.
+        """
+        df = self.df_resultado
+        indices = list(df.index)
+        if 'Diagnóstico_IA' in df.columns:
+            classes = list(df['Diagnóstico_IA'])
+        else:
+            colunas_ia = [c for c in df.columns if c.startswith('IA_')]
+            classes = [
+                'Maligno' if (linha == 'Maligno').sum() * 2 >= len(colunas_ia) else 'Benigno'
+                for _, linha in df[colunas_ia].iterrows()
+            ]
+        return [{'indice': int(indices[i]), 'classe': classes[i]} for i in range(len(indices))]
 
     def run_audit(self):
         
