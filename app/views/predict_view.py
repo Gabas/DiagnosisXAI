@@ -299,6 +299,26 @@ class PredictView(ctk.CTkFrame):
         self.lbl_report_hint.configure(
             text="Disponível após processar o diagnóstico.", text_color="gray")
 
+    def _gerar_exato(self, tipo: str, funcao):
+        """
+        Gera o relatório exato de um modelo, isolando eventuais falhas.
+
+        Se o explicador estiver indisponível (por exemplo, um .pkl regenerado
+        com código antigo), o problema é registrado e o processamento segue —
+        sem derrubar os demais relatórios do Passo 5.
+
+        Parameters
+        ----------
+        tipo : str
+            'arvore', 'logistica' ou 'knn'.
+        funcao : callable
+            Função sem argumentos que produz o dicionário do relatório.
+        """
+        try:
+            self._ultima_explicacao[tipo] = funcao()
+        except Exception as e:
+            print(f"Explicador '{tipo}' indisponível: {e}")
+
     def _preparar_relatorio(self, modelo_escolhido: str):
         """
         Gera as explicações dos modelos executados e popula o menu de relatórios.
@@ -320,31 +340,28 @@ class PredictView(ctk.CTkFrame):
 
         todos = modelo_escolhido == self.NOME_TODOS
         explicadores = self.model_loader.explainers
-        try:
-            exp = explicadores.get('arvore')
-            if exp is not None and (todos or modelo_escolhido == self.NOME_ARVORE):
-                self._ultima_explicacao['arvore'] = {
-                    'importancias': self._importancias_arvore(exp),
-                    'explicacoes': exp.explain(self.df_limpo),
-                }
-            exp = explicadores.get('logistica')
-            if exp is not None and (todos or modelo_escolhido == self.NOME_LOGISTICA):
-                self._ultima_explicacao['logistica'] = {
-                    'importancias': exp.global_importances(top_n=10),
-                    'explicacoes': exp.explain(self.df_padronizado, self.df_limpo),
-                }
-            exp = explicadores.get('knn')
-            if exp is not None and (todos or modelo_escolhido == self.NOME_KNN):
-                self._ultima_explicacao['knn'] = {
-                    'importancias': exp.global_importances(top_n=10),
-                    'explicacoes': exp.explain(self.df_padronizado),
-                    'contexto': exp.contexto(),
-                }
-        except Exception as e:
-            self._reset_relatorio()
-            self.lbl_report_hint.configure(
-                text=f"Erro ao gerar explicação: {e}", text_color="#e74c3c")
-            return
+
+        # Cada explicador é isolado: se um estiver indisponível (ex.: .pkl antigo
+        # com bug), os demais relatórios continuam funcionando.
+        exp = explicadores.get('arvore')
+        if exp is not None and (todos or modelo_escolhido == self.NOME_ARVORE):
+            self._gerar_exato('arvore', lambda: {
+                'importancias': self._importancias_arvore(exp),
+                'explicacoes': exp.explain(self.df_limpo),
+            })
+        exp = explicadores.get('logistica')
+        if exp is not None and (todos or modelo_escolhido == self.NOME_LOGISTICA):
+            self._gerar_exato('logistica', lambda: {
+                'importancias': exp.global_importances(top_n=10),
+                'explicacoes': exp.explain(self.df_padronizado, self.df_limpo),
+            })
+        exp = explicadores.get('knn')
+        if exp is not None and (todos or modelo_escolhido == self.NOME_KNN):
+            self._gerar_exato('knn', lambda: {
+                'importancias': exp.global_importances(top_n=10),
+                'explicacoes': exp.explain(self.df_padronizado),
+                'contexto': exp.contexto(),
+            })
 
         # SHAP: disponível para cada modelo executado que tenha artefatos salvos.
         if self.model_loader.shap_background is not None:
