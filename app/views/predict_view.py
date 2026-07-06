@@ -16,6 +16,7 @@ from utils.ui import ScrollableFrame, bind_treeview_mousewheel
 from views.report_window import ReportWindow
 from views.report_window_lr import LogisticReportWindow
 from views.report_window_knn import KNNReportWindow
+from views.report_window_rf import RandomForestReportWindow
 
 class PredictView(ctk.CTkFrame):
     """
@@ -34,6 +35,7 @@ class PredictView(ctk.CTkFrame):
     NOME_ARVORE = "Árvore de Decisão"
     NOME_LOGISTICA = "Regressão Logística"
     NOME_KNN = "KNN"
+    NOME_RF = "Random Forest"
     NOME_TODOS = "Todos (Comparação)"
 
     # Mapa: tipo de relatório exato -> classe da janela correspondente.
@@ -41,6 +43,7 @@ class PredictView(ctk.CTkFrame):
         'arvore': ReportWindow,
         'logistica': LogisticReportWindow,
         'knn': KNNReportWindow,
+        'randomforest': RandomForestReportWindow,
     }
 
     # Nome do modelo (no seletor) <-> chave curta usada no SHAP.
@@ -58,6 +61,7 @@ class PredictView(ctk.CTkFrame):
         'arvore': "Árvore de Decisão — regras",
         'logistica': "Regressão Logística — contribuições",
         'knn': "KNN — vizinhos",
+        'randomforest': "Random Forest — consenso das árvores",
         'shap_dt': "Árvore de Decisão — SHAP",
         'shap_rf': "Random Forest — SHAP",
         'shap_lr': "Regressão Logística — SHAP",
@@ -283,10 +287,52 @@ class PredictView(ctk.CTkFrame):
                     malignos = benignos = None
                 self._history_manager.save_session(
                     arquivo, modelo_escolhido, total, malignos, benignos,
-                    self._ultima_explicacao or None,
+                    self._relatorio_para_historico() or None,
                 )
             except Exception as e:
                 print(f"Erro durante a inferência: {e}")
+
+    def _relatorio_para_historico(self) -> dict:
+        """
+        Monta o dicionário de relatórios a persistir na sessão do histórico.
+
+        Reúne os relatórios exatos (Árvore/LR/KNN/Random Forest) e, para que o
+        SHAP e o UMAP possam ser reabertos depois de forma interativa, guarda os
+        dados do lote necessários para reconstruí-los: o lote padronizado/bruto e
+        os modelos com SHAP, e a projeção UMAP 2D já calculada. Os artefatos
+        pesados (modelos, background, embedding de treino) não são duplicados —
+        vêm do wisconsin.pkl ao reabrir.
+
+        Returns
+        -------
+        dict
+            Mapa {tipo: dados} com os relatórios exatos e, quando disponíveis,
+            as chaves 'shap' (lote + modelos) e 'umap' (projeção + pacientes).
+        """
+        relatorio = dict(self._ultima_explicacao)  # relatórios exatos (cópia)
+        fn = self.model_loader.feature_names
+
+        # SHAP: guarda o lote uma única vez + a lista de modelos com SHAP.
+        if self._shap_disponiveis:
+            relatorio['shap'] = {
+                'X_scaled': self.df_padronizado[fn].values.tolist(),
+                'X_raw': self.df_limpo[fn].values.tolist(),
+                'indices': [int(i) for i in self.df_padronizado.index],
+                'modelos': list(self._shap_disponiveis),
+            }
+
+        # UMAP: guarda a projeção 2D do lote (o fundo de treino vem do .pkl).
+        if self.model_loader.umap_train_2d is not None:
+            from views import report_launchers
+            batch_2d = report_launchers.projetar_umap(
+                self.model_loader, self.df_padronizado[fn].values)
+            if batch_2d is not None:
+                relatorio['umap'] = {
+                    'batch_2d': batch_2d.tolist(),
+                    'pacientes': self._pacientes_diagnostico(),
+                }
+
+        return relatorio
 
     def _reset_relatorio(self):
         """Limpa o estado dos relatórios de explicabilidade e desabilita o Passo 5."""
@@ -362,6 +408,13 @@ class PredictView(ctk.CTkFrame):
                 'explicacoes': exp.explain(self.df_padronizado),
                 'contexto': exp.contexto(),
             })
+        exp = explicadores.get('randomforest')
+        if exp is not None and (todos or modelo_escolhido == self.NOME_RF):
+            self._gerar_exato('randomforest', lambda: {
+                'importancias': exp.global_importances(top_n=10),
+                'explicacoes': exp.explain(self.df_padronizado),
+                'contexto': exp.contexto(),
+            })
 
         # SHAP: disponível para cada modelo executado que tenha artefatos salvos.
         if self.model_loader.shap_background is not None:
@@ -372,7 +425,7 @@ class PredictView(ctk.CTkFrame):
 
         # Monta as opções do menu: exatos primeiro, depois SHAP.
         opcoes = {}
-        for tipo in ('arvore', 'logistica', 'knn'):
+        for tipo in ('arvore', 'logistica', 'knn', 'randomforest'):
             if tipo in self._ultima_explicacao:
                 opcoes[self._ROTULOS_RELATORIO[tipo]] = tipo
         for key in self._shap_disponiveis:
@@ -472,9 +525,10 @@ class PredictView(ctk.CTkFrame):
 
     def _abrir_shap(self, key: str):
         """
-        Constrói (uma vez) o explicador SHAP do modelo e abre a janela SHAP.
+        Abre a janela SHAP do modelo a partir do lote atual.
 
-        A árvore usa dados brutos; os demais usam dados padronizados.
+        Delega a construção ao módulo compartilhado ``report_launchers`` (o mesmo
+        usado pelo histórico), reaproveitando o cache de explicadores SHAP.
 
         Parameters
         ----------
@@ -486,72 +540,40 @@ class PredictView(ctk.CTkFrame):
         ShapReportWindow
             A janela de relatório SHAP recém-criada.
         """
-        from core.shap_explainer import ShapExplainer          # imports tardios
-        from views.report_window_shap import ShapReportWindow
+        from views import report_launchers
 
-        nome_modelo = self._KEY_MODELO[key]
-        modelo = self.model_loader.models.get(nome_modelo)
         fn = self.model_loader.feature_names
-
-        explainer = self._shap_cache.get(key)
-        if explainer is None:
+        if key not in self._shap_cache:
             self.lbl_report_hint.configure(text="Preparando SHAP…", text_color="gray")
             self.update_idletasks()
-            explainer = ShapExplainer(modelo, key, fn, self.model_loader.shap_background)
-            self._shap_cache[key] = explainer
 
-        # A árvore foi treinada em dados brutos; os demais em dados padronizados.
-        entrada = self.df_limpo if key == 'dt' else self.df_padronizado
-        X_scaled = entrada[fn].values
-        valores_reais = self.df_limpo[fn].values
-        indices = list(entrada.index)
-        preds = modelo.predict(X_scaled)
-        pacientes = [
-            {'indice': int(indices[i]),
-             'classe': 'Maligno' if preds[i] == ShapExplainer.CLASSE_MALIGNO else 'Benigno'}
-            for i in range(len(indices))
-        ]
-        importancias = self.model_loader.shap_importances.get(key, [])
-        return ShapReportWindow(
-            self, explainer, X_scaled, valores_reais, pacientes,
-            importancias, self._KEY_MODELO[key])
+        return report_launchers.abrir_shap(
+            self, self.model_loader, key,
+            self.df_padronizado[fn].values, self.df_limpo[fn].values,
+            list(self.df_padronizado.index), self._shap_cache)
 
     def _abrir_umap(self):
         """
         Projeta o lote no embedding UMAP do treino e abre o mapa populacional.
 
-        Cada paciente é posicionado pela média ponderada (por distância) das
-        posições dos seus vizinhos de treino no embedding — rápido, determinístico
-        e sem depender do umap em tempo de execução.
-
         Returns
         -------
-        UmapMapWindow
-            A janela do mapa recém-criada.
+        UmapMapWindow ou None
+            A janela do mapa recém-criada, ou None se o embedding faltar.
         """
-        from sklearn.neighbors import NearestNeighbors
-        from views.report_window_umap import UmapMapWindow
+        from views import report_launchers
 
-        if self.model_loader.umap_train_2d is None or self.model_loader.X_train_scaled is None:
+        fn = self.model_loader.feature_names
+        batch_2d = report_launchers.projetar_umap(
+            self.model_loader, self.df_padronizado[fn].values)
+        if batch_2d is None:
             self.lbl_report_hint.configure(
                 text="Mapa UMAP indisponível: regenere o wisconsin.pkl pelo notebook.",
                 text_color="#e74c3c")
             return None
 
-        fn = self.model_loader.feature_names
-        Xtr = np.asarray(self.model_loader.X_train_scaled)
-        emb = np.asarray(self.model_loader.umap_train_2d)
-        Xb = self.df_padronizado[fn].values
-
-        k = min(10, len(Xtr))
-        distancias, vizinhos = NearestNeighbors(n_neighbors=k).fit(Xtr).kneighbors(Xb)
-        pesos = 1.0 / (distancias + 1e-9)
-        pesos /= pesos.sum(axis=1, keepdims=True)
-        batch_2d = np.einsum('nk,nkd->nd', pesos, emb[vizinhos])
-
-        return UmapMapWindow(
-            self, emb, self.model_loader.y_train, batch_2d,
-            self._pacientes_diagnostico())
+        return report_launchers.abrir_umap(
+            self, self.model_loader, batch_2d, self._pacientes_diagnostico())
 
     def _pacientes_diagnostico(self) -> list:
         """

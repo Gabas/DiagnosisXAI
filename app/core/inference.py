@@ -59,11 +59,12 @@ class ModelLoader:
                 self.models['KNN'] = data.get('model_knn')
                 self.models['Regressão Logística'] = data.get('model_lr')
 
-                # Explicadores (XAI) definidos e serializados pelo notebook.
-                # O app apenas os utiliza — a lógica de explicabilidade vive no notebook.
+                # Explicadores (XAI) definidos em core.explainers e serializados
+                # por referência no .pkl. O app apenas os utiliza.
                 self.explainers['arvore'] = data.get('explainer_dt')
                 self.explainers['logistica'] = data.get('explainer_lr')
                 self.explainers['knn'] = data.get('explainer_knn')
+                self.explainers['randomforest'] = data.get('explainer_rf')
 
                 # Artefatos do SHAP (o wrapper é construído sob demanda no app).
                 self.shap_background = data.get('shap_background')
@@ -80,5 +81,15 @@ class ModelLoader:
                     umap_path = os.path.join(base_dir, 'data', 'umap_train_2d.npy')
                     if os.path.exists(umap_path):
                         self.umap_train_2d = np.load(umap_path)
+
+                # Explicador do Random Forest: usa apenas o modelo + feature_names
+                # (nada pré-calculado), então é construído no app quando o .pkl
+                # ainda não o traz — mantendo o app funcional sem regenerar o .pkl.
+                if self.explainers.get('randomforest') is None \
+                        and self.models.get('Random Forest') is not None \
+                        and self.feature_names is not None:
+                    from core.explainers import RandomForestExplainer
+                    self.explainers['randomforest'] = RandomForestExplainer(
+                        self.models['Random Forest'], self.feature_names)
             else:
                 raise ValueError("O arquivo .pkl está num formato antigo. Execute o notebook novamente.")

@@ -452,3 +452,131 @@ class KNNExplainer:
                 'y_plot': float(query_2d[i, 1]),
             })
         return explicacoes
+
+
+class RandomForestExplainer:
+    """
+    Explica um Random Forest pelo consenso das árvores que fundamenta a decisão.
+
+    A floresta decide por média das probabilidades das N árvores (voto suave):
+    a probabilidade final é a média e a classe é a de maior probabilidade. Este
+    explicador expõe, por paciente, quantas árvores votaram em cada classe (voto
+    duro) e a distribuição das probabilidades das árvores — o análogo, para o
+    ensemble, do voto dos vizinhos no KNN: mostra se a decisão é um consenso
+    forte ou uma maioria apertada. Fornece ainda a importância global (redução
+    de impureza / Gini agregada pela floresta).
+
+    Complementa o relatório SHAP do RF (que detalha a contribuição de cada
+    atributo), focando na estrutura de votação do ensemble.
+
+    Attributes
+    ----------
+    model : sklearn.ensemble.RandomForestClassifier
+        Floresta já treinada.
+    feature_names : list[str]
+        Nomes das características, na ordem usada no treino.
+    n_arvores : int
+        Número de árvores (estimadores) da floresta.
+    """
+
+    CLASSE_MALIGNO = 1
+    # Faixa de probabilidade em que a floresta é considerada pouco decidida.
+    FAIXA_LIMITROFE = (0.35, 0.65)
+    N_BINS = 10  # bins do histograma de probabilidades das árvores (consenso)
+
+    def __init__(self, model, feature_names):
+        """
+        Inicializa o explicador a partir da floresta treinada.
+
+        Parameters
+        ----------
+        model : sklearn.ensemble.RandomForestClassifier
+            Random Forest treinado (sobre dados padronizados).
+        feature_names : list[str]
+            Nomes das colunas, na mesma ordem usada no treino.
+        """
+        self.model = model
+        self.feature_names = list(feature_names)
+        self.n_arvores = int(len(model.estimators_))
+        self._mal_idx = list(model.classes_).index(self.CLASSE_MALIGNO)
+
+    def global_importances(self, top_n: int = 10) -> list[tuple[str, float]]:
+        """
+        Retorna o ranking global de importância (redução de impureza / Gini).
+
+        Parameters
+        ----------
+        top_n : int, optional
+            Número máximo de características a retornar (padrão 10).
+
+        Returns
+        -------
+        list[tuple[str, float]]
+            Pares (característica, importância) com importância > 0, do maior
+            para o menor. A importância soma 1 entre todas as features.
+        """
+        importancias = self.model.feature_importances_
+        pares = [
+            (self.feature_names[i], float(imp))
+            for i, imp in enumerate(importancias) if imp > 0
+        ]
+        pares.sort(key=lambda p: p[1], reverse=True)
+        return pares[:top_n]
+
+    def contexto(self) -> dict:
+        """Metadados da floresta (cabeçalho e eixo do histograma do relatório)."""
+        return {'n_arvores': self.n_arvores, 'n_bins': self.N_BINS}
+
+    def explain(self, X_scaled) -> list[dict]:
+        """
+        Explica a decisão da floresta para cada amostra do lote.
+
+        Parameters
+        ----------
+        X_scaled : pandas.DataFrame
+            Dados padronizados (Z-score) — a entrada efetiva do modelo.
+
+        Returns
+        -------
+        list[dict]
+            Uma explicação por amostra, contendo:
+            - 'indice'        : rótulo da linha.
+            - 'classe'        : 'Maligno' ou 'Benigno' (predição da floresta).
+            - 'probabilidade' : P(Maligno) em %, média das árvores.
+            - 'confianca'     : probabilidade da classe predita, em %.
+            - 'votos_maligno' / 'votos_benigno' : nº de árvores por classe (voto duro).
+            - 'limitrofe'     : True se a floresta está pouco decidida.
+            - 'hist'          : contagem de árvores por faixa de P(Maligno)
+                                (N_BINS faixas de 0 a 1) — o consenso do ensemble.
+        """
+        Xs = X_scaled[self.feature_names]
+        valores = Xs.values
+        indices = list(Xs.index)
+
+        # P(Maligno) de cada árvore para cada paciente: (n_arvores, n_pacientes).
+        probs_arvores = np.stack([
+            est.predict_proba(valores)[:, self._mal_idx]
+            for est in self.model.estimators_
+        ])
+        prob_media = probs_arvores.mean(axis=0)          # == RandomForest.predict_proba
+        votos_mal = (probs_arvores >= 0.5).sum(axis=0)   # voto duro por paciente
+        predicoes = self.model.predict(valores)
+
+        explicacoes = []
+        for i in range(valores.shape[0]):
+            classe = 'Maligno' if predicoes[i] == self.CLASSE_MALIGNO else 'Benigno'
+            p = float(prob_media[i])
+            confianca = p if classe == 'Maligno' else (1.0 - p)
+            vm = int(votos_mal[i])
+            hist, _ = np.histogram(probs_arvores[:, i], bins=self.N_BINS, range=(0.0, 1.0))
+            explicacoes.append({
+                'indice': int(indices[i]),
+                'classe': classe,
+                'probabilidade': round(p * 100, 1),
+                'confianca': round(confianca * 100, 1),
+                'votos_maligno': vm,
+                'votos_benigno': self.n_arvores - vm,
+                'limitrofe': bool(self.FAIXA_LIMITROFE[0] <= p <= self.FAIXA_LIMITROFE[1]),
+                'hist': [int(h) for h in hist],
+            })
+        return explicacoes

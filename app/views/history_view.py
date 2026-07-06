@@ -6,9 +6,11 @@ import customtkinter as ctk
 from tkinter import messagebox
 from core.history_manager import HistoryManager
 from utils.ui import ScrollableFrame
+from views import report_launchers
 from views.report_window import ReportWindow
 from views.report_window_lr import LogisticReportWindow
 from views.report_window_knn import KNNReportWindow
+from views.report_window_rf import RandomForestReportWindow
 
 
 class HistoryView(ctk.CTkFrame):
@@ -279,6 +281,7 @@ class SessionDetailWindow(ctk.CTkToplevel):
         'arvore': ("Árvore de Decisão", ReportWindow),
         'logistica': ("Regressão Logística", LogisticReportWindow),
         'knn': ("KNN", KNNReportWindow),
+        'randomforest': ("Random Forest", RandomForestReportWindow),
     }
 
     def __init__(self, master, entry: dict, **kwargs):
@@ -299,7 +302,9 @@ class SessionDetailWindow(ctk.CTkToplevel):
         self.geometry("480x620")
         self.grid_columnconfigure(0, weight=1)
         self._entry = entry
-        self._report_window = None
+        self._report_windows = {}
+        self._loader = None
+        self._shap_cache = {}
         self._build(entry)
         self.after(150, self.lift)
         self.after(200, self.focus)
@@ -383,8 +388,10 @@ class SessionDetailWindow(ctk.CTkToplevel):
                 text_color="gray", font=ctk.CTkFont(size=12),
             ).pack(anchor="w", padx=14, pady=(0, 10))
 
-        # --- Relatórios de explicabilidade (um botão por modelo interpretável) ---
+        # --- Relatórios de explicabilidade ---
         relatorios = self._normalizar_relatorio(entry.get('relatorio'))
+
+        # Relatórios exatos (um botão por modelo interpretável).
         for tipo, (rotulo, _) in self._TIPOS.items():
             if tipo in relatorios:
                 ctk.CTkButton(
@@ -393,6 +400,25 @@ class SessionDetailWindow(ctk.CTkToplevel):
                     fg_color="#2980b9", hover_color="#3498db",
                     command=lambda t=tipo: self._abrir_relatorio(t),
                 ).pack(fill="x", pady=(14, 0))
+
+        # SHAP: um botão por modelo cujo lote foi salvo (reabre interativo).
+        shap = relatorios.get('shap')
+        if shap:
+            for key in shap.get('modelos', []):
+                nome = report_launchers.MODELO_POR_KEY.get(key, key)
+                ctk.CTkButton(
+                    wrapper, text=f"Ver Relatório SHAP — {nome}",
+                    fg_color="#8e44ad", hover_color="#9b59b6",
+                    command=lambda k=key: self._abrir_shap(k),
+                ).pack(fill="x", pady=(8, 0))
+
+        # UMAP: mapa populacional do lote (reabre interativo).
+        if 'umap' in relatorios:
+            ctk.CTkButton(
+                wrapper, text="Ver Mapa Populacional — UMAP",
+                fg_color="#16a085", hover_color="#1abc9c",
+                command=self._abrir_umap,
+            ).pack(fill="x", pady=(8, 0))
 
     @staticmethod
     def _normalizar_relatorio(relatorio) -> dict:
@@ -415,27 +441,79 @@ class SessionDetailWindow(ctk.CTkToplevel):
         """
         if not relatorio:
             return {}
-        # Reconhece qualquer tipo de relatório exato suportado (inclusive KNN).
-        if any(tipo in relatorio for tipo in SessionDetailWindow._TIPOS):
+        # Reconhece relatórios exatos (Árvore/LR/KNN/RF) e também SHAP/UMAP.
+        chaves = (*SessionDetailWindow._TIPOS, 'shap', 'umap')
+        if any(chave in relatorio for chave in chaves):
             return relatorio
         if 'explicacoes' in relatorio:  # formato antigo: somente a árvore
             return {'arvore': relatorio}
         return {}
 
+    def _obter_loader(self):
+        """
+        Devolve um ModelLoader, criando-o sob demanda (lazy) na 1ª necessidade.
+
+        Usado apenas ao reabrir SHAP/UMAP, que precisam do modelo, do background
+        e do embedding de treino — evitando carregar o .pkl ao abrir os detalhes.
+
+        Returns
+        -------
+        ModelLoader
+            Carregador com os artefatos do wisconsin.pkl.
+        """
+        if self._loader is None:
+            from core.inference import ModelLoader
+            self._loader = ModelLoader()
+        return self._loader
+
     def _abrir_relatorio(self, tipo: str):
         """
-        Abre (ou recria) a janela do relatório de explicabilidade do tipo indicado.
+        Abre (ou recria) a janela do relatório exato do tipo indicado.
 
         Parameters
         ----------
         tipo : str
-            'arvore', 'logistica' ou 'knn'.
+            'arvore', 'logistica', 'knn' ou 'randomforest'.
         """
         relatorios = self._normalizar_relatorio(self._entry.get('relatorio'))
         dados = relatorios.get(tipo)
         if not dados:
             return
-        if self._report_window is not None and self._report_window.winfo_exists():
-            self._report_window.destroy()
+        self._fechar_janela(tipo)
         _, Classe = self._TIPOS[tipo]
-        self._report_window = Classe(self, **dados)
+        self._report_windows[tipo] = Classe(self, **dados)
+
+    def _abrir_shap(self, key: str):
+        """
+        Reabre, interativamente, o relatório SHAP de um modelo salvo na sessão.
+
+        Reconstrói o explicador a partir do modelo carregado e reaproveita o
+        lote (padronizado/bruto) persistido — o cálculo por paciente segue lazy.
+
+        Parameters
+        ----------
+        key : str
+            Chave do modelo ('dt', 'rf', 'lr', 'svm' ou 'knn').
+        """
+        shap = self._normalizar_relatorio(self._entry.get('relatorio')).get('shap')
+        if not shap:
+            return
+        self._fechar_janela(f'shap_{key}')
+        self._report_windows[f'shap_{key}'] = report_launchers.abrir_shap(
+            self, self._obter_loader(), key,
+            shap['X_scaled'], shap['X_raw'], shap['indices'], self._shap_cache)
+
+    def _abrir_umap(self):
+        """Reabre o Mapa Populacional (UMAP) do lote salvo na sessão."""
+        umap = self._normalizar_relatorio(self._entry.get('relatorio')).get('umap')
+        if not umap:
+            return
+        self._fechar_janela('umap')
+        self._report_windows['umap'] = report_launchers.abrir_umap(
+            self, self._obter_loader(), umap['batch_2d'], umap['pacientes'])
+
+    def _fechar_janela(self, chave: str):
+        """Fecha a janela de relatório previamente aberta com a chave indicada."""
+        janela = self._report_windows.get(chave)
+        if janela is not None and janela.winfo_exists():
+            janela.destroy()
