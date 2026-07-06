@@ -399,8 +399,9 @@ class SessionDetailWindow(ctk.CTkToplevel):
         """
         Normaliza o campo 'relatorio' para o formato por modelo.
 
-        Aceita o formato atual (chaves 'arvore'/'logistica') e o formato antigo
-        (relatório plano da árvore, com 'importancias'/'explicacoes' na raiz).
+        Aceita o formato atual (chaves por modelo: 'arvore'/'logistica'/'knn')
+        e o formato antigo (relatório plano da árvore, com
+        'importancias'/'explicacoes' na raiz).
 
         Parameters
         ----------
@@ -414,7 +415,8 @@ class SessionDetailWindow(ctk.CTkToplevel):
         """
         if not relatorio:
             return {}
-        if 'arvore' in relatorio or 'logistica' in relatorio:
+        # Reconhece qualquer tipo de relatório exato suportado (inclusive KNN).
+        if any(tipo in relatorio for tipo in SessionDetailWindow._TIPOS):
             return relatorio
         if 'explicacoes' in relatorio:  # formato antigo: somente a árvore
             return {'arvore': relatorio}
@@ -427,7 +429,7 @@ class SessionDetailWindow(ctk.CTkToplevel):
         Parameters
         ----------
         tipo : str
-            'arvore' ou 'logistica'.
+            'arvore', 'logistica' ou 'knn'.
         """
         relatorios = self._normalizar_relatorio(self._entry.get('relatorio'))
         dados = relatorios.get(tipo)
