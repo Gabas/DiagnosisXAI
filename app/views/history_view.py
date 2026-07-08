@@ -311,7 +311,7 @@ class SessionDetailWindow(ctk.CTkToplevel):
 
     def _build(self, entry: dict):
         """Constrói o conteúdo da janela a partir dos dados da sessão."""
-        wrapper = ctk.CTkFrame(self, fg_color="transparent")
+        wrapper = ScrollableFrame(self, fg_color="transparent")
         wrapper.pack(fill="both", expand=True, padx=20, pady=20)
 
         ctk.CTkLabel(
