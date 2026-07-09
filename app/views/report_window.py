@@ -9,9 +9,10 @@ import customtkinter as ctk
 from tkinter import ttk
 
 from utils.ui import bind_treeview_mousewheel
+from views.report_common import PatientPDFExportMixin
 
 
-class ReportWindow(ctk.CTkToplevel):
+class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
     """
     Janela secundária que apresenta o relatório de explicabilidade da árvore.
 
@@ -144,7 +145,13 @@ class ReportWindow(ctk.CTkToplevel):
         ctk.CTkLabel(
             container, text="Decisão por paciente",
             font=ctk.CTkFont(size=15, weight="bold"),
-        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(8, 8))
+        ).grid(row=0, column=0, sticky="w", pady=(8, 8))
+
+        ctk.CTkButton(
+            container, text="Exportar Paciente (PDF)", width=190,
+            fg_color="#7f8c8d", hover_color="#95a5a6",
+            command=self._exportar_pdf_paciente,
+        ).grid(row=0, column=1, sticky="e", pady=(8, 8))
 
         self._style_tree()
 

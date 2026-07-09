@@ -11,6 +11,7 @@ cloudpickle>=3.0        # serializa os explicadores (XAI) do notebook para o app
 
 # --- Interface gráfica (app) --------------------------------
 customtkinter>=5.2
+reportlab>=4.0          # exportação de relatórios em PDF (lote e por paciente)
 
 # --- Notebook / análise científica --------------------------
 matplotlib>=3.7

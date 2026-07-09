@@ -13,6 +13,7 @@ from core.history_manager import HistoryManager
 from core.inference import ModelLoader
 from core.predictor import PredictorEngine
 from utils.ui import ScrollableFrame, bind_treeview_mousewheel
+from utils.pdf_report import export_batch_report, resolve_reports_dir
 from views.report_window import ReportWindow
 from views.report_window_lr import LogisticReportWindow
 from views.report_window_knn import KNNReportWindow
@@ -96,6 +97,7 @@ class PredictView(ctk.CTkFrame):
         self.df_resultado = None
 
         self._ultima_explicacao = {}
+        self._ultima_acuracia = None
         self._report_windows = {}
         self._shap_disponiveis = []
         self._opcoes_relatorio = {}
@@ -172,9 +174,23 @@ class PredictView(ctk.CTkFrame):
         self.lbl_report_hint = ctk.CTkLabel(xai_frame, text="Disponível após processar o diagnóstico.", font=ctk.CTkFont(size=12, slant="italic"), text_color="gray")
         self.lbl_report_hint.grid(row=2, column=0, padx=20, pady=(0, 10), sticky="w")
 
+        # --- Passo 6: Exportar Resultados ---
+        export_frame = ctk.CTkFrame(container)
+        export_frame.grid(row=6, column=0, padx=20, pady=5, sticky="nsew")
+        ctk.CTkLabel(export_frame, text="Passo 6: Exportar Resultados", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, columnspan=2, padx=20, pady=(10, 5), sticky="w")
+
+        self.btn_export_csv = ctk.CTkButton(export_frame, text="Exportar CSV", state="disabled", command=self._exportar_csv, fg_color="#16a085", hover_color="#1abc9c")
+        self.btn_export_csv.grid(row=1, column=0, padx=20, pady=10, sticky="w")
+
+        self.btn_export_pdf = ctk.CTkButton(export_frame, text="Exportar PDF (Resumo do Lote)", state="disabled", command=self._exportar_pdf_lote, fg_color="#16a085", hover_color="#1abc9c")
+        self.btn_export_pdf.grid(row=1, column=1, padx=20, pady=10, sticky="w")
+
+        self.lbl_export_hint = ctk.CTkLabel(export_frame, text="Disponível após processar o diagnóstico.", font=ctk.CTkFont(size=12, slant="italic"), text_color="gray")
+        self.lbl_export_hint.grid(row=2, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="w")
+
         # --- Tabela de Preview ---
         self.preview_frame = ctk.CTkFrame(container)
-        self.preview_frame.grid(row=6, column=0, padx=20, pady=10, sticky="nsew")
+        self.preview_frame.grid(row=7, column=0, padx=20, pady=10, sticky="nsew")
         self.preview_frame.grid_columnconfigure(0, weight=1)
         self.preview_frame.grid_rowconfigure(1, weight=1) 
 
@@ -243,6 +259,11 @@ class PredictView(ctk.CTkFrame):
             self.btn_run.configure(state="disabled")
             self.btn_audit.configure(state="disabled")
             self.lbl_audit_results.configure(text="")
+            self._ultima_acuracia = None
+            self.btn_export_csv.configure(state="disabled")
+            self.btn_export_pdf.configure(state="disabled")
+            self.lbl_export_hint.configure(
+                text="Disponível após processar o diagnóstico.", text_color="gray")
             self._reset_relatorio()
         except Exception as e:
             self.file_path_var.set(f"Erro ao carregar arquivo: {e}")
@@ -277,6 +298,12 @@ class PredictView(ctk.CTkFrame):
                 # Libera o Passo 4 após a IA rodar
                 self.btn_audit.configure(state="normal")
                 self.lbl_audit_results.configure(text="")
+                self._ultima_acuracia = None
+
+                # Libera o Passo 6 (exportação) após a IA rodar
+                self.btn_export_csv.configure(state="normal")
+                self.btn_export_pdf.configure(state="normal")
+                self.lbl_export_hint.configure(text="Pronto para exportar.", text_color="#2ecc71")
 
                 # Gera e exibe a explicabilidade da Árvore de Decisão ao final
                 self._preparar_relatorio(modelo_escolhido)
@@ -682,12 +709,105 @@ class PredictView(ctk.CTkFrame):
                     f"   • {k}: {v:.2f}%" for k, v in acuracia.items()
                 )
                 self.lbl_audit_results.configure(text=resultados_texto, text_color="#2ecc71")
+                self._ultima_acuracia = acuracia
 
                 # Atualiza a acurácia na entrada mais recente do histórico
                 self._history_manager.update_last_accuracy(acuracia)
 
             except Exception as e:
                 self.lbl_audit_results.configure(text=f"Erro na auditoria: {e}", text_color="#e74c3c")
+
+    @staticmethod
+    def _formatar_importancias(tipo: str, dados: dict) -> list:
+        """
+        Formata as importâncias de um explicador como pares (nome, texto).
+
+        A Regressão Logística expõe coeficientes assinados (dicts com
+        'feature'/'coeficiente'/'direcao'), enquanto os demais expõem
+        importância por permutação/Gini (tuplas (nome, fração de 0 a 1) —
+        cada um com sua própria unidade, por isso a formatação é decidida
+        aqui e não no gerador de PDF.
+
+        Parameters
+        ----------
+        tipo : str
+            'arvore', 'logistica', 'knn', 'randomforest' ou 'svm'.
+        dados : dict
+            Relatório do explicador, com a chave 'importancias'.
+
+        Returns
+        -------
+        list[tuple[str, str]]
+            Pares (biomarcador, valor já formatado como texto).
+        """
+        itens = dados.get('importancias', [])
+        if tipo == 'logistica':
+            return [(d['feature'], f"{d['coeficiente']:+.2f} ({d['direcao']})") for d in itens]
+        return [(nome, f"{valor * 100:.2f}%") for nome, valor in itens]
+
+    def _nome_base_export(self) -> str:
+        """Monta um nome de arquivo sugerido para a exportação (sem extensão)."""
+        modelo = self.model_selector.get().lower().replace(" ", "_")
+        modelo = modelo.replace("(", "").replace(")", "")
+        return f"diagnostico_{modelo}"
+
+    def _exportar_csv(self):
+        """Exporta o DataFrame de resultado (Passo 3/4) para um arquivo CSV."""
+        if self.df_resultado is None:
+            return
+        caminho = filedialog.asksaveasfilename(
+            title="Exportar CSV", initialdir=resolve_reports_dir(),
+            initialfile=f"{self._nome_base_export()}.csv",
+            defaultextension=".csv",
+            filetypes=(("CSV", "*.csv"), ("Todos os arquivos", "*.*")),
+        )
+        if not caminho:
+            return
+        try:
+            self.df_resultado.to_csv(caminho, index=True, index_label="paciente")
+            self.lbl_export_hint.configure(text=f"CSV salvo em: {caminho}", text_color="#2ecc71")
+        except Exception as e:
+            self.lbl_export_hint.configure(text=f"Erro ao exportar CSV: {e}", text_color="#e74c3c")
+
+    def _exportar_pdf_lote(self):
+        """Exporta o resumo da sessão (metadados, importâncias e diagnóstico por paciente) em PDF."""
+        if self.df_resultado is None:
+            return
+        caminho = filedialog.asksaveasfilename(
+            title="Exportar PDF", initialdir=resolve_reports_dir(),
+            initialfile=f"{self._nome_base_export()}.pdf",
+            defaultextension=".pdf",
+            filetypes=(("PDF", "*.pdf"), ("Todos os arquivos", "*.*")),
+        )
+        if not caminho:
+            return
+        try:
+            total = len(self.df_resultado)
+            if 'Diagnóstico_IA' in self.df_resultado.columns:
+                malignos = int((self.df_resultado['Diagnóstico_IA'] == 'Maligno').sum())
+                benignos = total - malignos
+            else:
+                malignos = benignos = None
+            meta = {
+                'arquivo': self.file_path_var.get().replace("Arquivo selecionado: ", ""),
+                'modelo': self.model_selector.get(),
+                'total': total, 'malignos': malignos, 'benignos': benignos,
+            }
+            nomes_modelo = {
+                'arvore': self.NOME_ARVORE, 'logistica': self.NOME_LOGISTICA,
+                'knn': self.NOME_KNN, 'randomforest': self.NOME_RF, 'svm': self.NOME_SVM,
+            }
+            importancias_por_modelo = {
+                nomes_modelo.get(tipo, tipo): self._formatar_importancias(tipo, dados)
+                for tipo, dados in self._ultima_explicacao.items()
+            }
+            export_batch_report(
+                caminho, meta, self.df_resultado,
+                importancias_por_modelo, self._ultima_acuracia,
+            )
+            self.lbl_export_hint.configure(text=f"PDF salvo em: {caminho}", text_color="#2ecc71")
+        except Exception as e:
+            self.lbl_export_hint.configure(text=f"Erro ao exportar PDF: {e}", text_color="#e74c3c")
 
     def _update_treeview_with_data(self, df: pd.DataFrame):
         """
