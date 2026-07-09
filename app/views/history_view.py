@@ -11,6 +11,7 @@ from views.report_window import ReportWindow
 from views.report_window_lr import LogisticReportWindow
 from views.report_window_knn import KNNReportWindow
 from views.report_window_rf import RandomForestReportWindow
+from views.report_window_svm import SVMReportWindow
 
 
 class HistoryView(ctk.CTkFrame):
@@ -282,6 +283,7 @@ class SessionDetailWindow(ctk.CTkToplevel):
         'logistica': ("Regressão Logística", LogisticReportWindow),
         'knn': ("KNN", KNNReportWindow),
         'randomforest': ("Random Forest", RandomForestReportWindow),
+        'svm': ("SVM", SVMReportWindow),
     }
 
     def __init__(self, master, entry: dict, **kwargs):

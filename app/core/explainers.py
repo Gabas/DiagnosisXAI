@@ -580,3 +580,213 @@ class RandomForestExplainer:
                 'hist': [int(h) for h in hist],
             })
         return explicacoes
+
+
+class SVMExplainer:
+    """
+    Explica um SVM de kernel RBF pelos vetores de suporte que fundamentam a decisão.
+
+    Diferente de um SVM linear, o kernel RBF não define um hiperplano no espaço
+    original das características: a decisão de cada paciente é, na verdade, uma
+    soma ponderada da sua similaridade (kernel gaussiano) com os vetores de
+    suporte do treino::
+
+        decision_function(x) = Σᵢ dual_coefᵢ · K(x, svᵢ) + b
+        K(x, sv) = exp(-γ · ‖x - sv‖²)
+
+    Este explicador reproduz exatamente essa soma (validado contra
+    ``model.decision_function`` — diferença de ponto flutuante apenas) e expõe,
+    por paciente, quais pacientes de treino (vetores de suporte) mais pesaram na
+    decisão — o análogo, para o SVM, do voto dos vizinhos no KNN, mas fiel à
+    matemática exata do kernel, sem qualquer modelo auxiliar ou projeção
+    aproximada. A posição 2D de cada paciente (para o mapa populacional) é
+    calculada fora deste explicador, pela mesma projeção UMAP usada no restante
+    do app.
+
+    Attributes
+    ----------
+    model : sklearn.svm.SVC
+        SVM (kernel RBF) já treinado sobre dados padronizados.
+    feature_names : list[str]
+        Nomes das características, na ordem usada no treino.
+    n_support : int
+        Número total de vetores de suporte do modelo.
+    """
+
+    CLASSE_MALIGNO = 1
+    # Faixa de probabilidade em que o modelo é considerado pouco decidido.
+    FAIXA_LIMITROFE = (0.35, 0.65)
+    # Nº de vetores de suporte guardados por lado (Maligno/Benigno) no relatório.
+    MAX_POR_LADO = 5
+
+    def __init__(self, model, feature_names, y_train, train_2d, importancias):
+        """
+        Inicializa o explicador a partir do SVM treinado.
+
+        Parameters
+        ----------
+        model : sklearn.svm.SVC
+            SVM de kernel RBF treinado (sobre dados padronizados), com
+            ``probability=True``.
+        feature_names : list[str]
+            Nomes das colunas, na mesma ordem usada no treino.
+        y_train : array-like
+            Rótulos reais dos pacientes de treino (0/1) — usados para rotular
+            a classe de cada vetor de suporte.
+        train_2d : array-like
+            Embedding UMAP 2D dos pacientes de treino (o mesmo usado pelo Mapa
+            Populacional), alinhado por índice com ``y_train``.
+        importancias : list[tuple[str, float]]
+            Importância global por permutação, pré-calculada no notebook.
+        """
+        self.model = model
+        self.feature_names = list(feature_names)
+        self._mal_idx = list(model.classes_).index(self.CLASSE_MALIGNO)
+
+        # Vetores de suporte e coeficientes duais (alpha_i · y_i, já com sinal) —
+        # tudo o que é necessário para reconstruir exatamente a decision_function.
+        self._sv = np.asarray(model.support_vectors_, dtype=float)
+        self._dual_coef = np.asarray(model.dual_coef_[0], dtype=float)
+        self._intercept = float(model.intercept_[0])
+        self._gamma = float(model._gamma)  # valor resolvido de gamma='scale'/'auto'
+        self._sv_train_idx = np.asarray(model.support_, dtype=int)
+
+        self._y_train = np.asarray(y_train)
+        self._sv_y = self._y_train[self._sv_train_idx]
+        self._sv_mal_mask = self._sv_y == self.CLASSE_MALIGNO
+        self._train_2d = np.asarray(train_2d, dtype=float)
+        self.n_support = int(len(self._sv))
+        self._importancias = [(f, float(v)) for f, v in importancias]
+
+    def global_importances(self, top_n: int = 10) -> list[tuple[str, float]]:
+        """
+        Retorna as características de maior impacto na decisão, por permutação.
+
+        Parameters
+        ----------
+        top_n : int, optional
+            Número máximo de características a retornar (padrão 10).
+
+        Returns
+        -------
+        list[tuple[str, float]]
+            Pares (característica, importância) com importância > 0, do maior
+            para o menor.
+        """
+        pares = [(f, v) for f, v in self._importancias if v > 0]
+        pares.sort(key=lambda p: p[1], reverse=True)
+        return pares[:top_n]
+
+    def contexto(self) -> dict:
+        """
+        Mapa 2D dos pacientes de treino e dos vetores de suporte (fundo do mapa).
+
+        Returns
+        -------
+        dict
+            {'train_2d', 'train_y', 'sv_indices', 'n_support',
+             'n_support_maligno', 'n_support_benigno'}.
+        """
+        return {
+            'train_2d': self._train_2d.tolist(),
+            'train_y': self._y_train.tolist(),
+            'sv_indices': self._sv_train_idx.tolist(),
+            'n_support': self.n_support,
+            'n_support_maligno': int((self._sv_y == self.CLASSE_MALIGNO).sum()),
+            'n_support_benigno': int((self._sv_y != self.CLASSE_MALIGNO).sum()),
+        }
+
+    def explain(self, X_scaled) -> list[dict]:
+        """
+        Explica a decisão do SVM para cada amostra do lote.
+
+        Como a soma é feita sobre todos os vetores de suporte (dezenas a
+        centenas), listar apenas os "top-N por magnitude" pode enganar: o
+        sinal de cada vetor é fixo (positivo se ele for Maligno, negativo se
+        Benigno — o kernel RBF nunca é negativo), então os termos maiores de
+        um único lado não revelam se esse lado de fato venceu a soma. Por
+        isso a explicação é um balanço de forças (soma total a favor de cada
+        classe, mais o viés do modelo) e não um ranking único.
+
+        Parameters
+        ----------
+        X_scaled : pandas.DataFrame
+            Dados padronizados (Z-score) — a entrada efetiva do modelo.
+
+        Returns
+        -------
+        list[dict]
+            Uma explicação por amostra, contendo:
+            - 'indice'        : rótulo da linha.
+            - 'classe'        : 'Maligno' ou 'Benigno'.
+            - 'probabilidade' : P(Maligno) em %, segundo o modelo.
+            - 'confianca'     : probabilidade da classe predita, em %.
+            - 'distancia'     : valor (com sinal) da decision_function —
+                                distância à margem no espaço do kernel.
+            - 'limitrofe'     : True se o modelo está pouco decidido.
+            - 'vies'          : termo independente (b) do modelo.
+            - 'forca_maligno' : soma das contribuições dos vetores de suporte
+                                Maligno (sempre ≥ 0 — pull total para Maligno).
+            - 'forca_benigno' : soma (em módulo) das contribuições dos vetores
+                                de suporte Benigno — pull total para Benigno.
+                                Vale: forca_maligno - forca_benigno + vies ==
+                                distancia.
+            - 'top_maligno' / 'top_benigno' : os vetores de suporte mais
+                                influentes de cada lado, cada item com
+                                {'indice_treino', 'classe', 'contribuicao',
+                                 'similaridade'}.
+        """
+        Xs = X_scaled[self.feature_names]
+        z = Xs.values
+        indices = list(Xs.index)
+
+        decisao = self.model.decision_function(z)
+        prob = self.model.predict_proba(z)[:, self._mal_idx]
+        predicoes = self.model.predict(z)
+
+        # Kernel RBF entre cada paciente do lote e cada vetor de suporte:
+        # K(x, sv) = exp(-gamma * ||x - sv||^2) — mesma fórmula usada pelo SVM.
+        sq_dists = ((z[:, None, :] - self._sv[None, :, :]) ** 2).sum(axis=2)
+        K = np.exp(-self._gamma * sq_dists)
+        contrib_matrix = K * self._dual_coef[None, :]  # contribuição de cada SV
+
+        idx_mal = np.where(self._sv_mal_mask)[0]
+        idx_ben = np.where(~self._sv_mal_mask)[0]
+
+        def _top(indices_lado, contribs, n):
+            ordem = indices_lado[np.argsort(-np.abs(contribs[indices_lado]))][:n]
+            return [
+                {
+                    'indice_treino': int(self._sv_train_idx[j]),
+                    'classe': 'Maligno' if self._sv_mal_mask[j] else 'Benigno',
+                    'contribuicao': float(contribs[j]),
+                    'similaridade': float(K_row[j]),
+                }
+                for j in ordem
+            ]
+
+        explicacoes = []
+        for i in range(z.shape[0]):
+            contribs = contrib_matrix[i]
+            K_row = K[i]
+            forca_maligno = float(contribs[idx_mal].sum())
+            forca_benigno = float(-contribs[idx_ben].sum())
+
+            p = float(prob[i])
+            classe = 'Maligno' if predicoes[i] == self.CLASSE_MALIGNO else 'Benigno'
+            confianca = p if classe == 'Maligno' else (1.0 - p)
+            explicacoes.append({
+                'indice': int(indices[i]),
+                'classe': classe,
+                'probabilidade': round(p * 100, 1),
+                'confianca': round(confianca * 100, 1),
+                'distancia': float(decisao[i]),
+                'limitrofe': bool(self.FAIXA_LIMITROFE[0] <= p <= self.FAIXA_LIMITROFE[1]),
+                'vies': self._intercept,
+                'forca_maligno': forca_maligno,
+                'forca_benigno': forca_benigno,
+                'top_maligno': _top(idx_mal, contribs, self.MAX_POR_LADO),
+                'top_benigno': _top(idx_ben, contribs, self.MAX_POR_LADO),
+            })
+
+        return explicacoes

@@ -17,6 +17,7 @@ from views.report_window import ReportWindow
 from views.report_window_lr import LogisticReportWindow
 from views.report_window_knn import KNNReportWindow
 from views.report_window_rf import RandomForestReportWindow
+from views.report_window_svm import SVMReportWindow
 
 class PredictView(ctk.CTkFrame):
     """
@@ -36,6 +37,7 @@ class PredictView(ctk.CTkFrame):
     NOME_LOGISTICA = "Regressão Logística"
     NOME_KNN = "KNN"
     NOME_RF = "Random Forest"
+    NOME_SVM = "SVM"
     NOME_TODOS = "Todos (Comparação)"
 
     # Mapa: tipo de relatório exato -> classe da janela correspondente.
@@ -44,6 +46,7 @@ class PredictView(ctk.CTkFrame):
         'logistica': LogisticReportWindow,
         'knn': KNNReportWindow,
         'randomforest': RandomForestReportWindow,
+        'svm': SVMReportWindow,
     }
 
     # Nome do modelo (no seletor) <-> chave curta usada no SHAP.
@@ -62,6 +65,7 @@ class PredictView(ctk.CTkFrame):
         'logistica': "Regressão Logística — contribuições",
         'knn': "KNN — vizinhos",
         'randomforest': "Random Forest — consenso das árvores",
+        'svm': "SVM — vetores de suporte",
         'shap_dt': "Árvore de Decisão — SHAP",
         'shap_rf': "Random Forest — SHAP",
         'shap_lr': "Regressão Logística — SHAP",
@@ -415,6 +419,14 @@ class PredictView(ctk.CTkFrame):
                 'explicacoes': exp.explain(self.df_padronizado),
                 'contexto': exp.contexto(),
             })
+        exp = explicadores.get('svm')
+        if exp is not None and (todos or modelo_escolhido == self.NOME_SVM):
+            self._gerar_exato('svm', lambda: {
+                'importancias': exp.global_importances(top_n=10),
+                'explicacoes': exp.explain(self.df_padronizado),
+                'contexto': exp.contexto(),
+                'batch_2d': self._batch_2d_para_svm(),
+            })
 
         # SHAP: disponível para cada modelo executado que tenha artefatos salvos.
         if self.model_loader.shap_background is not None:
@@ -425,7 +437,7 @@ class PredictView(ctk.CTkFrame):
 
         # Monta as opções do menu: exatos primeiro, depois SHAP.
         opcoes = {}
-        for tipo in ('arvore', 'logistica', 'knn', 'randomforest'):
+        for tipo in ('arvore', 'logistica', 'knn', 'randomforest', 'svm'):
             if tipo in self._ultima_explicacao:
                 opcoes[self._ROTULOS_RELATORIO[tipo]] = tipo
         for key in self._shap_disponiveis:
@@ -452,6 +464,26 @@ class PredictView(ctk.CTkFrame):
             self.lbl_report_hint.configure(
                 text=f"{len(labels)} relatórios prontos — escolha e clique em Abrir.",
                 text_color="#2ecc71")
+
+    def _batch_2d_para_svm(self):
+        """
+        Projeta o lote no embedding UMAP do treino, para o mapa do relatório SVM.
+
+        Reaproveita a mesma projeção usada pelo Mapa Populacional — os vetores
+        de suporte plotados no relatório do SVM vêm desse mesmo embedding.
+
+        Returns
+        -------
+        list ou None
+            Lista de posições 2D (n_lote × 2), ou None se o embedding UMAP do
+            treino não estiver disponível (.pkl sem esse artefato).
+        """
+        from views import report_launchers
+
+        fn = self.model_loader.feature_names
+        batch_2d = report_launchers.projetar_umap(
+            self.model_loader, self.df_padronizado[fn].values)
+        return batch_2d.tolist() if batch_2d is not None else None
 
     def _importancias_arvore(self, exp) -> list:
         """

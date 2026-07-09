@@ -65,6 +65,7 @@ class ModelLoader:
                 self.explainers['logistica'] = data.get('explainer_lr')
                 self.explainers['knn'] = data.get('explainer_knn')
                 self.explainers['randomforest'] = data.get('explainer_rf')
+                self.explainers['svm'] = data.get('explainer_svm')
 
                 # Artefatos do SHAP (o wrapper é construído sob demanda no app).
                 self.shap_background = data.get('shap_background')
