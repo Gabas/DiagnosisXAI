@@ -134,6 +134,8 @@ class PredictView(ctk.CTkFrame):
         ctk.CTkLabel(padroniza_frame, text="Passo 2: Higienizar e Escalar (Z-Score)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=20, pady=(10, 5), sticky="w")
         self.btn_standardize = ctk.CTkButton(padroniza_frame, text="Aplicar Padronização", state="disabled", command=self.standardize_data, fg_color="#d35400", hover_color="#e67e22")
         self.btn_standardize.grid(row=1, column=0, padx=20, pady=10, sticky="w")
+        self.lbl_standardize_error = ctk.CTkLabel(padroniza_frame, text="", font=ctk.CTkFont(size=12), text_color="#e74c3c", justify="left")
+        self.lbl_standardize_error.grid(row=2, column=0, padx=20, pady=(0, 10), sticky="w")
 
         # --- Passo 3: Inferência de IA ---
         ia_frame = ctk.CTkFrame(container)
@@ -147,6 +149,8 @@ class PredictView(ctk.CTkFrame):
 
         self.btn_run = ctk.CTkButton(ia_frame, text="Processar Diagnóstico", state="disabled", command=self.process_batch, fg_color="#27ae60", hover_color="#2ecc71")
         self.btn_run.grid(row=1, column=1, padx=20, pady=10, sticky="w")
+        self.lbl_run_error = ctk.CTkLabel(ia_frame, text="", font=ctk.CTkFont(size=12), text_color="#e74c3c", justify="left")
+        self.lbl_run_error.grid(row=2, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="w")
 
         # --- Passo 4: Auditoria (Opcional) ---
         audit_frame = ctk.CTkFrame(container)
@@ -255,8 +259,10 @@ class PredictView(ctk.CTkFrame):
             
             # Reset e habilitação dos próximos passos
             self.btn_standardize.configure(state="normal")
+            self.lbl_standardize_error.configure(text="")
             self.model_selector.configure(state="disabled")
             self.btn_run.configure(state="disabled")
+            self.lbl_run_error.configure(text="")
             self.btn_audit.configure(state="disabled")
             self.lbl_audit_results.configure(text="")
             self._ultima_acuracia = None
@@ -281,8 +287,9 @@ class PredictView(ctk.CTkFrame):
                 
                 self.model_selector.configure(state="normal")
                 self.btn_run.configure(state="normal")
+                self.lbl_standardize_error.configure(text="")
             except Exception as e:
-                print(f"Erro na padronização: {e}")
+                self.lbl_standardize_error.configure(text=f"Erro na padronização: {e}")
 
     def process_batch(self):
         """
@@ -294,6 +301,7 @@ class PredictView(ctk.CTkFrame):
                 modelo_escolhido = self.model_selector.get()
                 self.df_resultado = self.predictor.predict(self.df_padronizado, self.df_limpo, modelo_escolhido)
                 self._update_treeview_with_data(self.df_resultado)
+                self.lbl_run_error.configure(text="")
 
                 # Libera o Passo 4 após a IA rodar
                 self.btn_audit.configure(state="normal")
@@ -321,7 +329,7 @@ class PredictView(ctk.CTkFrame):
                     self._relatorio_para_historico() or None,
                 )
             except Exception as e:
-                print(f"Erro durante a inferência: {e}")
+                self.lbl_run_error.configure(text=f"Erro durante a inferência: {e}")
 
     def _relatorio_para_historico(self) -> dict:
         """
