@@ -3,6 +3,7 @@ Módulo responsável pela interface principal e navegação do sistema.
 """
 
 import customtkinter as ctk
+from utils.ui import responsive_geometry
 from views.dashboard_view import DashboardView
 from views.history_view import HistoryView
 from views.predict_view import PredictView
@@ -38,7 +39,7 @@ class MainWindow(ctk.CTk):
         super().__init__()
 
         self.title("DiagnosisXAI")
-        self.geometry("1000x700")
+        responsive_geometry(self, 1000, 700)
 
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)

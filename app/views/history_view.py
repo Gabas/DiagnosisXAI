@@ -5,7 +5,7 @@ Módulo contendo a aba de histórico de sessões de diagnóstico.
 import customtkinter as ctk
 from tkinter import messagebox
 from core.history_manager import HistoryManager
-from utils.ui import ScrollableFrame
+from utils.ui import ScrollableFrame, responsive_geometry
 from views import report_launchers
 from views.report_window import ReportWindow
 from views.report_window_lr import LogisticReportWindow
@@ -301,7 +301,7 @@ class SessionDetailWindow(ctk.CTkToplevel):
         """
         super().__init__(master, **kwargs)
         self.title("Detalhes da Sessão")
-        self.geometry("480x620")
+        responsive_geometry(self, 480, 620, min_width=380, min_height=340)
         self.grid_columnconfigure(0, weight=1)
         self._entry = entry
         self._report_windows = {}

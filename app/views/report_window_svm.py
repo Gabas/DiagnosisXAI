@@ -20,7 +20,7 @@ matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from utils.ui import bind_treeview_mousewheel
+from utils.ui import bind_treeview_mousewheel, responsive_geometry
 from views.report_common import PatientPDFExportMixin
 
 
@@ -74,7 +74,7 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         """
         super().__init__(master, **kwargs)
         self.title("Relatório de Explicabilidade — SVM")
-        self.geometry("1060x860")
+        responsive_geometry(self, 1060, 860)
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(2, weight=1)

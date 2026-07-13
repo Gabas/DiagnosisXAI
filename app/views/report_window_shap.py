@@ -17,7 +17,7 @@ matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from utils.ui import bind_treeview_mousewheel
+from utils.ui import bind_treeview_mousewheel, responsive_geometry
 
 
 class ShapReportWindow(ctk.CTkToplevel):
@@ -66,7 +66,7 @@ class ShapReportWindow(ctk.CTkToplevel):
         """
         super().__init__(master, **kwargs)
         self.title(f"Relatório SHAP — {titulo}")
-        self.geometry("1040x820")
+        responsive_geometry(self, 1040, 820)
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(2, weight=1)

@@ -51,6 +51,45 @@ class ScrollableFrame(ctk.CTkScrollableFrame):
         self._parent_canvas.yview_scroll(-1 if event.num == 4 else 1, "units")
 
 
+def responsive_geometry(window, width: int, height: int, margin: float = 0.9,
+                         min_width: int = 480, min_height: int = 400):
+    """
+    Redimensiona e centraliza a janela dentro dos limites reais da tela.
+
+    As janelas do app foram dimensionadas olhando para um monitor grande
+    (1920x1080). Um ``geometry("1060x860")`` fixo abre maior que a tela
+    inteira num notebook menor, empurrando parte do conteúdo para fora da
+    área visível e exigindo rolagem extra (ou o gerenciador de janelas
+    cortando a janela). Aqui, o tamanho "ideal" passado é usado como teto:
+    a janela nunca ultrapassa uma fração da tela disponível.
+
+    Parameters
+    ----------
+    window : ctk.CTk ou ctk.CTkToplevel
+        Janela a redimensionar.
+    width, height : int
+        Tamanho ideal (o que já funciona bem em telas grandes).
+    margin : float, optional
+        Fração da tela a ocupar no máximo (padrão 90%) — deixa espaço para
+        barra de tarefas/decorações do gerenciador de janelas.
+    min_width, min_height : int, optional
+        Tamanho mínimo absoluto, para a janela permanecer utilizável mesmo
+        em telas muito pequenas.
+    """
+    window.update_idletasks()
+    screen_w = window.winfo_screenwidth()
+    screen_h = window.winfo_screenheight()
+
+    largura = max(min_width, min(width, int(screen_w * margin)))
+    altura = max(min_height, min(height, int(screen_h * margin)))
+
+    x = max(0, (screen_w - largura) // 2)
+    y = max(0, (screen_h - altura) // 2)
+
+    window.geometry(f"{largura}x{altura}+{x}+{y}")
+    window.minsize(min(min_width, largura), min(min_height, altura))
+
+
 def bind_treeview_mousewheel(tree, rows: int = 3):
     """
     Habilita a rolagem por roda do mouse em um ``ttk.Treeview``.

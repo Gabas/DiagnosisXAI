@@ -8,7 +8,7 @@ e o detalhamento do raciocínio aplicado a cada paciente do lote.
 import customtkinter as ctk
 from tkinter import ttk
 
-from utils.ui import bind_treeview_mousewheel
+from utils.ui import bind_treeview_mousewheel, responsive_geometry
 from views.report_common import PatientPDFExportMixin
 
 
@@ -48,7 +48,7 @@ class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         """
         super().__init__(master, **kwargs)
         self.title("Relatório de Explicabilidade — Árvore de Decisão")
-        self.geometry("980x740")
+        responsive_geometry(self, 980, 740)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(2, weight=1)
 

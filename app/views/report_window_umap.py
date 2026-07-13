@@ -17,7 +17,7 @@ matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from utils.ui import bind_treeview_mousewheel
+from utils.ui import bind_treeview_mousewheel, responsive_geometry
 
 
 class UmapMapWindow(ctk.CTkToplevel):
@@ -59,7 +59,7 @@ class UmapMapWindow(ctk.CTkToplevel):
         """
         super().__init__(master, **kwargs)
         self.title("Mapa Populacional — UMAP")
-        self.geometry("980x760")
+        responsive_geometry(self, 980, 760)
         self.grid_columnconfigure(0, weight=3)
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(1, weight=1)

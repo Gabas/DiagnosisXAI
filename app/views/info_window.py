@@ -8,7 +8,7 @@ modelos — um exemplo de código com a inicialização.
 
 import customtkinter as ctk
 
-from utils.ui import ScrollableFrame
+from utils.ui import ScrollableFrame, responsive_geometry
 
 
 # Conteúdo didático de cada modelo/tecnologia, indexado por uma chave curta.
@@ -261,7 +261,7 @@ class InfoWindow(ctk.CTkToplevel):
         super().__init__(master, **kwargs)
         dados = CONTEUDO.get(chave, {"titulo": "Detalhes", "secoes": []})
         self.title(dados.get("titulo", "Detalhes"))
-        self.geometry("740x700")
+        responsive_geometry(self, 740, 700, min_width=420, min_height=380)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
         self._build(dados)
