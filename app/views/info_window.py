@@ -57,25 +57,32 @@ CONTEUDO = {
              "pacientes de treino e classifica cada novo paciente pela maioria entre "
              "seus K vizinhos mais próximos no espaço dos 30 biomarcadores."),
             ("Como funciona",
-             "Para um novo paciente, calcula a distância (euclidiana) até todos os "
-             "pacientes de treino, seleciona os K=20 mais próximos e adota o diagnóstico "
-             "da maioria. Por depender de distância, exige dados padronizados (Z-score), "
-             "para que todos os atributos pesem igualmente."),
+             "Para um novo paciente, calcula a distância (Manhattan) até todos os "
+             "pacientes de treino, seleciona os K=4 mais próximos e adota o diagnóstico "
+             "da maioria — mas o voto de cada vizinho é ponderado pelo inverso da "
+             "distância, então os mais próximos pesam mais. Por depender de distância, "
+             "exige dados padronizados (Z-score), para que todos os atributos pesem "
+             "igualmente."),
             ("Parâmetros usados",
-             "n_neighbors=20 — número de vizinhos que votam.\n"
-             "weights='uniform' — todos os vizinhos têm o mesmo peso no voto, "
-             "independentemente da distância."),
+             "n_neighbors=4 — número de vizinhos que votam.\n"
+             "weights='distance' — vizinhos mais próximos têm peso maior no voto.\n"
+             "metric='manhattan' — distância como soma das diferenças absolutas, em vez "
+             "da euclidiana.\n"
+             "Combinação escolhida por validação cruzada (5-fold) no treino — não só "
+             "pela acurácia no teste — por generalizar melhor que k=20 com voto uniforme."),
             ("Vantagens e limitações",
              "Simples e sem suposições sobre a forma dos dados; a explicação é intuitiva "
              "(os vizinhos que decidiram). Fica mais lento com muitos dados, pois compara "
-             "com todo o conjunto de treino a cada predição."),
+             "com todo o conjunto de treino a cada predição. Um K pequeno como 4 é mais "
+             "sensível a ruído local, por isso pondera por distância em vez de voto igual."),
         ],
         "codigo":
             "from sklearn.neighbors import KNeighborsClassifier\n\n"
             "# Exige dados padronizados (Z-score), pois classifica por distância\n"
             "modelo = KNeighborsClassifier(\n"
-            "    n_neighbors=20,        # nº de vizinhos que votam\n"
-            "    weights='uniform',     # todos os vizinhos com o mesmo peso\n"
+            "    n_neighbors=4,          # nº de vizinhos que votam\n"
+            "    weights='distance',    # vizinhos mais próximos pesam mais\n"
+            "    metric='manhattan',    # soma das diferenças absolutas\n"
             ")\n"
             "modelo.fit(X_train_scaled, y_train)\n"
             "predicao = modelo.predict(X_novo_scaled)",

@@ -386,10 +386,15 @@ class KNNExplainer:
     Explica o K-Nearest Neighbors pela vizinhança que fundamenta cada decisão.
 
     Para cada paciente, identifica os K pacientes de treino mais próximos (no
-    espaço padronizado de 30 biomarcadores) e decompõe a decisão no voto deles:
-    a classe predita é a maioria e a confiança é a fração desse voto. Fornece
-    ainda a importância global por permutação e a projeção 2D usada para situar
-    o paciente entre os vizinhos.
+    espaço padronizado de 30 biomarcadores) e decompõe a decisão no voto deles.
+    Quando o modelo pondera o voto pela distância (``weights='distance'``), a
+    contagem bruta de vizinhos por classe pode não bater com a decisão real —
+    com K par, por exemplo, um empate de 2×2 ainda é desempatado pelo peso do
+    vizinho mais próximo. Por isso a confiança exibida vem sempre de
+    ``predict_proba`` (a mesma conta do modelo) e o voto é decomposto também
+    em peso ponderado por classe, não só na contagem bruta. Fornece ainda a
+    importância global por permutação e a projeção 2D usada para situar o
+    paciente entre os vizinhos.
     """
 
     CLASSE_MALIGNO = 1
@@ -399,6 +404,7 @@ class KNNExplainer:
         self.model = model
         self.feature_names = list(feature_names)
         self.k = int(model.n_neighbors)
+        self._pondera_distancia = model.weights == 'distance'
         self._y_train = np.asarray(y_train)
         self._pca = pca
         self._train_2d = np.asarray(train_2d, dtype=float)
@@ -417,12 +423,43 @@ class KNNExplainer:
             'train_y': self._y_train.tolist(),
         }
 
+    def _pesos_vizinhos(self, vd: np.ndarray) -> np.ndarray:
+        """
+        Peso de cada vizinho na votação, replicando a fórmula do sklearn.
+
+        Com ``weights='uniform'`` todo vizinho pesa igual. Com
+        ``weights='distance'`` o peso é ``1/distância`` — e, se algum vizinho
+        coincide exatamente com o paciente (distância 0), o sklearn dá peso
+        total a esse(s) vizinho(s) e ignora os demais, em vez de dividir por
+        zero.
+
+        Parameters
+        ----------
+        vd : numpy.ndarray
+            Distâncias do paciente aos seus K vizinhos.
+
+        Returns
+        -------
+        numpy.ndarray
+            Pesos (não normalizados) de cada vizinho, na mesma ordem de ``vd``.
+        """
+        if not self._pondera_distancia:
+            return np.ones_like(vd)
+        with np.errstate(divide='ignore'):
+            pesos = 1.0 / vd
+        empatados_em_zero = np.isinf(pesos)
+        if empatados_em_zero.any():
+            return empatados_em_zero.astype(float)
+        return pesos
+
     def explain(self, X_scaled):
         Xs = X_scaled[self.feature_names]
         z = Xs.values
         indices = list(Xs.index)
         dist, viz_idx = self.model.kneighbors(z)
         pred = self.model.predict(z)
+        mal_idx = list(self.model.classes_).index(self.CLASSE_MALIGNO)
+        proba = self.model.predict_proba(z)[:, mal_idx]
         query_2d = self._pca.transform(z)
 
         explicacoes = []
@@ -431,9 +468,14 @@ class KNNExplainer:
             classes_viz = self._y_train[vz]
             votos_mal = int((classes_viz == self.CLASSE_MALIGNO).sum())
             votos_ben = self.k - votos_mal
+
+            pesos = self._pesos_vizinhos(vd)
+            peso_total = pesos.sum()
+            peso_mal = float(pesos[classes_viz == self.CLASSE_MALIGNO].sum() / peso_total)
+
             classe = 'Maligno' if pred[i] == self.CLASSE_MALIGNO else 'Benigno'
-            votos_classe = votos_mal if classe == 'Maligno' else votos_ben
-            confianca = votos_classe / self.k
+            p = float(proba[i])
+            confianca = p if classe == 'Maligno' else (1.0 - p)
             vizinhos = [
                 {'indice': int(vz[j]),
                  'classe': 'Maligno' if classes_viz[j] == self.CLASSE_MALIGNO else 'Benigno',
@@ -446,6 +488,9 @@ class KNNExplainer:
                 'confianca': round(confianca * 100, 1),
                 'votos_maligno': votos_mal,
                 'votos_benigno': votos_ben,
+                'peso_maligno': round(peso_mal * 100, 1),
+                'peso_benigno': round((1.0 - peso_mal) * 100, 1),
+                'pondera_distancia': self._pondera_distancia,
                 'limitrofe': bool(confianca < self.LIMIAR_CONFIANCA),
                 'vizinhos': vizinhos,
                 'x_plot': float(query_2d[i, 0]),

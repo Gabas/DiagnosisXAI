@@ -341,9 +341,22 @@ class KNNReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             f"PACIENTE {e['indice']}",
             f"Diagnóstico da IA: {e['classe']}  (confiança {e['confianca']:.0f}%)",
             "",
-            f"Voto dos {self._k} vizinhos mais próximos:",
+            f"Voto dos {self._k} vizinhos mais próximos (contagem simples):",
             f"   Maligno: {e['votos_maligno']}     Benigno: {e['votos_benigno']}",
         ]
+        if e['pondera_distancia']:
+            linhas.append("")
+            linhas.append("Peso ponderado por distância (o que decide de fato):")
+            linhas.append(f"   Maligno: {e['peso_maligno']:.0f}%     Benigno: {e['peso_benigno']:.0f}%")
+            if e['votos_maligno'] > e['votos_benigno']:
+                maioria_bruta = 'Maligno'
+            elif e['votos_benigno'] > e['votos_maligno']:
+                maioria_bruta = 'Benigno'
+            else:
+                maioria_bruta = None
+            if maioria_bruta != e['classe']:
+                linhas.append("   (a contagem simples sozinha não seria conclusiva — "
+                               "o vizinho mais próximo pesou mais)")
         if e['limitrofe']:
             linhas.append("")
             linhas.append("⚠ Caso limítrofe: voto apertado entre as classes.")
