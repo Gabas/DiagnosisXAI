@@ -235,7 +235,7 @@ DiagnosisXAI/
 |---|---|
 | Árvore de Decisão | Critério de entropia |
 | KNN | 4 vizinhos, peso por distância, métrica Manhattan |
-| Regressão Logística | `solver=lbfgs`, `class_weight=balanced` |
+| Regressão Logística | `solver=liblinear`, `C=0.1`, `class_weight=balanced` |
 | Random Forest | 500 estimadores, `class_weight=balanced` |
 | SVM | Kernel RBF, `class_weight=balanced` |
 

@@ -98,10 +98,13 @@ CONTEUDO = {
             ("Como funciona",
              "Calcula o logito = w·x + b (soma ponderada dos atributos) e aplica a sigmoide "
              "para obter P(Maligno); se P ≥ 0,5, classifica como Maligno. O treino ajusta os "
-             "pesos w para maximizar a verossimilhança (solver lbfgs). Por usar combinação "
-             "linear, requer dados padronizados."),
+             "pesos w para maximizar a verossimilhança, com regularização L2 controlada por "
+             "C (solver liblinear). Por usar combinação linear, requer dados padronizados."),
             ("Parâmetros usados",
-             "solver='lbfgs' — otimizador eficiente para bases de porte médio.\n"
+             "C=0.1 — força da regularização L2 (inverso; quanto menor, mais forte). "
+             "Escolhido por validação cruzada no treino — generaliza melhor que o padrão "
+             "(C=1.0) neste dataset.\n"
+             "solver='liblinear' — otimizador eficiente para bases pequenas/médias.\n"
              "class_weight='balanced' — dá mais peso à classe minoritária, compensando o "
              "desbalanceamento.\n"
              "max_iter=2000 — teto de iterações para garantir convergência.\n"
@@ -115,7 +118,8 @@ CONTEUDO = {
             "from sklearn.linear_model import LogisticRegression\n\n"
             "# Modelo linear; usa dados padronizados (Z-score)\n"
             "modelo = LogisticRegression(\n"
-            "    solver='lbfgs',            # otimizador para bases de porte médio\n"
+            "    C=0.1,                     # regularização L2 (validada por cross-validation)\n"
+            "    solver='liblinear',        # otimizador para bases pequenas/médias\n"
             "    class_weight='balanced',   # compensa o desbalanceamento entre classes\n"
             "    max_iter=2000,             # iterações suficientes para convergir\n"
             "    random_state=42,\n"
