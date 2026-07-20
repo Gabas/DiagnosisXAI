@@ -138,12 +138,16 @@ CONTEUDO = {
             ("Como funciona",
              "Cada árvore é treinada em uma amostra aleatória dos dados (bootstrap) e "
              "considera apenas um subconjunto aleatório de atributos em cada divisão. Essa "
-             "aleatoriedade (bagging) faz as árvores errarem de formas diferentes; no voto "
-             "conjunto, os erros se cancelam e o overfitting diminui. A predição final é o "
-             "voto da maioria."),
+             "aleatoriedade (bagging) faz as árvores errarem de formas diferentes; na "
+             "combinação, os erros se cancelam e o overfitting diminui. A predição final é a "
+             "média das probabilidades das árvores (voto suave), não uma contagem de votos."),
             ("Parâmetros usados",
              "n_estimators=500 — número de árvores no comitê.\n"
-             "class_weight='balanced' — compensa o desbalanceamento entre classes.\n"
+             "max_depth=10, min_samples_split=4, min_samples_leaf=2, max_features='sqrt' — "
+             "limitam o crescimento de cada árvore; escolhidos por validação cruzada no "
+             "treino, para generalizar melhor que os parâmetros padrão.\n"
+             "class_weight='balanced_subsample' — compensa o desbalanceamento entre classes, "
+             "recalculado a cada amostra bootstrap.\n"
              "n_jobs=-1 — treina as árvores em paralelo, usando todos os núcleos da CPU.\n"
              "random_state=42."),
             ("Vantagens e limitações",
@@ -154,7 +158,11 @@ CONTEUDO = {
             "from sklearn.ensemble import RandomForestClassifier\n\n"
             "modelo = RandomForestClassifier(\n"
             "    n_estimators=500,          # nº de árvores no ensemble\n"
-            "    class_weight='balanced',   # compensa o desbalanceamento entre classes\n"
+            "    max_depth=10,              # profundidade máxima de cada árvore\n"
+            "    min_samples_split=4,       # mín. de amostras para dividir um nó\n"
+            "    min_samples_leaf=2,        # mín. de amostras em cada folha\n"
+            "    max_features='sqrt',       # nº de atributos considerados por divisão\n"
+            "    class_weight='balanced_subsample',  # compensa o desbalanceamento\n"
             "    n_jobs=-1,                 # usa todos os núcleos da CPU\n"
             "    random_state=42,\n"
             ")\n"
