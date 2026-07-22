@@ -13,11 +13,12 @@ Software de apoio ao diagnóstico preditivo de câncer de mama com Inteligência
 2. [Instalação](#instalação)
 3. [Rodando o Notebook](#rodando-o-notebook)
 4. [Rodando o App](#rodando-o-app)
-5. [Estrutura do Repositório](#estrutura-do-repositório)
-6. [Base de Dados](#base-de-dados)
-7. [Modelos Implementados](#modelos-implementados)
-8. [Cronograma](#cronograma)
-9. [Referências](#referências)
+5. [Rodando os Testes](#rodando-os-testes)
+6. [Estrutura do Repositório](#estrutura-do-repositório)
+7. [Base de Dados](#base-de-dados)
+8. [Modelos Implementados](#modelos-implementados)
+9. [Cronograma](#cronograma)
+10. [Referências](#referências)
 
 ---
 
@@ -178,6 +179,32 @@ Os arquivos de teste já estão em `data/`:
 
 ---
 
+## Rodando os Testes
+
+Com o ambiente virtual ativo, a partir da raiz do repositório:
+
+```bash
+pytest
+```
+
+Os testes cobrem a lógica de `app/core/` e `app/utils/pdf_report.py` — não a
+interface gráfica. Dois grupos:
+
+- **Isolados** (`test_explainers.py`, `test_history_manager.py`, `test_pdf_report.py`):
+  não dependem do `wisconsin.pkl` nem do `data/history.json` reais. Os
+  explicadores são testados sobre modelos treinados na hora, com a base
+  pública do scikit-learn (`load_breast_cancer`) — o foco é validar que a
+  decisão exibida (classe, confiança, votos) sempre bate com a decisão real
+  do modelo (`predict`/`predict_proba`/`decision_function`), o tipo de
+  inconsistência já encontrado e corrigido no SVM e no KNN durante o
+  desenvolvimento.
+- **De integração** (`test_batch_processor.py`, `test_predictor.py`):
+  exercitam o `data/wisconsin.pkl` versionado no repositório — servem também
+  como smoke test do artefato: se o notebook for reexecutado e gerar um
+  `.pkl` com um formato diferente, esses testes acusam.
+
+---
+
 ## Estrutura do Repositório
 
 ```text
@@ -208,7 +235,10 @@ DiagnosisXAI/
 ├── notebooks/
 │   └── Wisconsin.ipynb          # Pipeline científico completo
 │
+├── tests/                       # Testes automatizados (pytest) do app/core
+│
 ├── requirements.txt
+├── pytest.ini
 └── .gitignore
 ```
 
