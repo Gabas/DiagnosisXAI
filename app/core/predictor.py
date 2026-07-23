@@ -70,9 +70,16 @@ class PredictorEngine:
             previsoes = modelo.predict(entrada)
             df_resultado['Diagnóstico_IA'] = ['Maligno' if p == 1 else 'Benigno' for p in previsoes]
 
-            if hasattr(modelo, 'predict_proba') and model_name not in self.MODELOS_SEM_CERTEZA:
-                probabilidades = modelo.predict_proba(entrada)
-                df_resultado['Certeza_Maligno(%)'] = [round(prob[1] * 100, 2) for prob in probabilidades]
+            if model_name not in self.MODELOS_SEM_CERTEZA:
+                # A "certeza" vem, de preferência, do modelo CALIBRADO (probabilidades
+                # confiáveis — ver Seção 10.3/14 do notebook); recai no modelo original
+                # quando o .pkl não traz a versão calibrada. O rótulo acima permanece o
+                # do modelo original, preservando o desempenho validado.
+                calibrados = getattr(self.loader, 'calibrated_models', {})
+                modelo_proba = calibrados.get(model_name, modelo)
+                if hasattr(modelo_proba, 'predict_proba'):
+                    probabilidades = modelo_proba.predict_proba(entrada)
+                    df_resultado['Certeza_Maligno(%)'] = [round(prob[1] * 100, 2) for prob in probabilidades]
 
         print("Processamento concluído!")
         return df_resultado

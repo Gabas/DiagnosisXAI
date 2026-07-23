@@ -271,6 +271,18 @@ DiagnosisXAI/
 
 Todos avaliados com: Acurácia, Sensibilidade, Especificidade, F1, ROC-AUC e PR-AUC.
 
+### Rigor estatístico (Seção 10 do notebook)
+
+Além do desempenho num único conjunto de teste, os modelos passam por três análises complementares que reforçam o rigor metodológico:
+
+| Análise | O que responde | Método |
+|---|---|---|
+| **Validação cruzada** | Quão *estável* é o desempenho entre diferentes partições? | k-fold estratificado repetido (10×5), com padronização reajustada dentro de cada fold (sem vazamento) — reporta média ± desvio-padrão |
+| **Significância estatística** | As diferenças *entre modelos* são reais ou ruído? | Teste pareado 5×2cv (Dietterich) + Friedman com pós-hoc de Nemenyi (α = 0,05) |
+| **Calibração** | A *probabilidade* prevista corresponde à frequência real? | Diagrama de confiabilidade, escore de Brier e ECE; recalibração por escalonamento de Platt |
+
+As probabilidades exibidas pelo App na coluna **"Certeza (%)"** usam os modelos **recalibrados** (Seção 14), tornando a confiança apresentada ao clínico mais fiel — sem alterar a classe prevista pelos modelos originais.
+
 ---
 
 ## Cronograma

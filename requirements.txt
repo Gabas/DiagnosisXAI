@@ -19,6 +19,11 @@ seaborn>=0.13
 shap>=0.45
 umap-learn>=0.5
 
+# --- Rigor estatístico (Seção 10: VC, significância, calibração) ---
+scipy>=1.11             # teste de Friedman (validação cruzada)
+mlxtend>=0.23           # teste pareado 5x2cv entre modelos (Dietterich)
+scikit-posthocs>=0.9    # pós-hoc de Nemenyi após o Friedman
+
 # --- Opcional: visualizações adicionais no notebook ---------
 plotly>=5.0
 yellowbrick>=1.5

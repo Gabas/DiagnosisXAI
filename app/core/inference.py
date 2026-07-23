@@ -18,6 +18,11 @@ class ModelLoader:
         Lista com os nomes das colunas (features) esperadas pelo modelo.
     models : dict
         Dicionário que armazena os modelos de Machine Learning.
+    calibrated_models : dict
+        Versões calibradas (escalonamento de Platt) dos modelos com probabilidade
+        informativa — usadas apenas para a "certeza" exibida ao clínico. Vazio
+        quando o .pkl foi gerado por um notebook sem a etapa de recalibração
+        (Seção 14), caso em que o app recai nas probabilidades dos modelos originais.
     explainers : dict
         Explicadores de explicabilidade (XAI) gerados e serializados pelo
         notebook: {'arvore': ..., 'logistica': ...}. Valores None quando o
@@ -29,6 +34,7 @@ class ModelLoader:
         self.scaler = None
         self.feature_names = None
         self.models = {}
+        self.calibrated_models = {}
         self.explainers = {}
         self.shap_background = None
         self.shap_importances = {}
@@ -58,6 +64,21 @@ class ModelLoader:
                 self.models['SVM'] = data.get('model_svm')
                 self.models['KNN'] = data.get('model_knn')
                 self.models['Regressão Logística'] = data.get('model_lr')
+
+                # Modelos calibrados (Seção 14 do notebook): usados SÓ para a coluna
+                # de "certeza" exibida ao clínico. A classe prevista continua vindo
+                # dos modelos originais (self.models), preservando o comportamento
+                # validado e mantendo os explicadores (XAI) — que leem internos como
+                # coef_/support_vectors_/estimators_ — intactos. Entradas ausentes
+                # (ex.: .pkl antigo sem calibração) são descartadas: o app recai então
+                # na probabilidade do modelo original.
+                calibrados = {
+                    'KNN'                : data.get('model_knn_cal'),
+                    'Regressão Logística': data.get('model_lr_cal'),
+                    'Random Forest'      : data.get('model_rf_cal'),
+                    'SVM'                : data.get('model_svm_cal'),
+                }
+                self.calibrated_models = {k: v for k, v in calibrados.items() if v is not None}
 
                 # Explicadores (XAI) definidos em core.explainers e serializados
                 # por referência no .pkl. O app apenas os utiliza.
