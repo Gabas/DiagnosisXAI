@@ -7,6 +7,7 @@ no Linux, ausente no customtkinter 5.2.2.
 """
 
 import sys
+import tkinter as tk
 import customtkinter as ctk
 
 
@@ -116,3 +117,97 @@ def bind_treeview_mousewheel(tree, rows: int = 3):
     tree.bind("<Button-4>", _linux, add="+")
     tree.bind("<Button-5>", _linux, add="+")
     tree.bind("<MouseWheel>", _win_mac, add="+")
+
+
+class HeadingTooltip:
+    """
+    Tooltip flutuante para os cabeçalhos de um ``ttk.Treeview``.
+
+    O ``ttk.Treeview`` não expõe um widget por cabeçalho, então não dá para
+    vincular um tooltip diretamente a cada coluna. Esta classe observa o
+    movimento do mouse sobre a tabela, detecta quando o cursor está sobre a
+    região de cabeçalho (``identify_region``), descobre a coluna
+    (``identify_column``) e exibe, após um pequeno atraso, uma janelinha com o
+    texto retornado por ``descricao(nome_coluna)``.
+
+    Parameters
+    ----------
+    tree : tkinter.ttk.Treeview
+        Tabela cujos cabeçalhos receberão tooltips.
+    descricao : callable
+        Função ``nome_coluna -> str | None``. Quando retorna ``None`` (coluna
+        sem descrição conhecida), nenhum tooltip é exibido.
+    delay : int, optional
+        Atraso, em milissegundos, antes de mostrar o tooltip (padrão 450).
+    wraplength : int, optional
+        Largura máxima do texto, em pixels, antes de quebrar linha (padrão 340).
+    """
+
+    def __init__(self, tree, descricao, delay: int = 450, wraplength: int = 340):
+        """Registra os vínculos de mouse na tabela e guarda a função de descrição."""
+        self.tree = tree
+        self.descricao = descricao
+        self.delay = delay
+        self.wraplength = wraplength
+        self._tip = None
+        self._after_id = None
+        self._coluna_atual = None
+        tree.bind("<Motion>", self._on_motion, add="+")
+        tree.bind("<Leave>", self._on_leave, add="+")
+
+    def _nome_coluna(self, event):
+        """Nome da coluna sob o cursor se ele estiver sobre um cabeçalho, senão None."""
+        if self.tree.identify_region(event.x, event.y) != "heading":
+            return None
+        col_id = self.tree.identify_column(event.x)  # ex.: '#1'
+        try:
+            idx = int(col_id[1:]) - 1
+        except ValueError:
+            return None
+        colunas = self.tree["columns"]
+        if 0 <= idx < len(colunas):
+            return colunas[idx]
+        return None
+
+    def _on_motion(self, event):
+        """Agenda/atualiza o tooltip conforme o cabeçalho sob o cursor muda."""
+        nome = self._nome_coluna(event)
+        if nome == self._coluna_atual:
+            return
+        self._hide()
+        self._coluna_atual = nome
+        texto = self.descricao(nome) if nome is not None else None
+        if texto:
+            self._cancel()
+            x, y = event.x_root + 14, event.y_root + 20
+            self._after_id = self.tree.after(self.delay, lambda: self._show(texto, x, y))
+
+    def _show(self, texto: str, x: int, y: int):
+        """Cria a janelinha do tooltip na posição indicada."""
+        self._tip = tk.Toplevel(self.tree)
+        self._tip.wm_overrideredirect(True)
+        self._tip.wm_geometry(f"+{x}+{y}")
+        self._tip.attributes("-topmost", True)
+        tk.Label(
+            self._tip, text=texto, justify="left", wraplength=self.wraplength,
+            background="#1e1e1e", foreground="#e6e6e6", relief="solid", borderwidth=1,
+            padx=8, pady=6,
+        ).pack()
+
+    def _hide(self):
+        """Cancela o agendamento pendente e destrói o tooltip visível, se houver."""
+        self._cancel()
+        if self._tip is not None:
+            self._tip.destroy()
+            self._tip = None
+
+    def _cancel(self):
+        """Cancela um agendamento de exibição ainda não disparado."""
+        if self._after_id is not None:
+            self.tree.after_cancel(self._after_id)
+            self._after_id = None
+
+    def _on_leave(self, _event):
+        """Esconde o tooltip quando o cursor deixa a tabela."""
+        self._hide()
+        self._coluna_atual = None

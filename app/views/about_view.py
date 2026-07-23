@@ -3,6 +3,13 @@ Módulo contendo a aba de informações sobre o projeto e a base de dados.
 """
 
 import customtkinter as ctk
+from core.biomarkers import (
+    BIOMARCADORES_BASE,
+    ESTATISTICAS,
+    GLOSSARIO_INTRO,
+    GLOSSARIO_SUBTITULO,
+    GLOSSARIO_UNIDADES,
+)
 from utils.ui import ScrollableFrame
 from views.info_window import InfoWindow
 
@@ -62,6 +69,9 @@ class AboutView(ctk.CTkFrame):
 
         # Card: Tecnologias XAI
         self._build_xai_card(scroll, row=4)
+
+        # Card: Glossário de Biomarcadores
+        self._build_glossary_card(scroll, row=5)
 
     def _build_tcc_card(self, parent, row: int):
         """
@@ -262,6 +272,103 @@ class AboutView(ctk.CTkFrame):
             self._tornar_clicavel(item, chave)
 
         ctk.CTkFrame(card, height=16, fg_color="transparent").pack()
+
+    def _build_glossary_card(self, parent, row: int):
+        """
+        Constrói o card com o glossário dos 30 biomarcadores (inline, sem popup).
+
+        Apresenta a introdução, uma nota destacada sobre unidades de medida, o
+        significado das 3 estatísticas (média/erro padrão/pior) e uma tabela
+        alinhada com as 10 medições-base. O conteúdo vem de ``core.biomarkers``,
+        a mesma fonte usada pelos tooltips da tabela de resultados.
+
+        Parameters
+        ----------
+        parent : ctk.CTkBaseClass
+            Frame pai onde o card será inserido.
+        row : int
+            Linha da grade onde o card será posicionado.
+        """
+        card = ctk.CTkFrame(parent)
+        card.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 16))
+
+        ctk.CTkLabel(
+            card, text="Glossário de Biomarcadores",
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).pack(anchor="w", padx=20, pady=(16, 0))
+        ctk.CTkLabel(
+            card, text=GLOSSARIO_SUBTITULO,
+            font=ctk.CTkFont(size=12), text_color="gray"
+        ).pack(anchor="w", padx=20, pady=(0, 8))
+
+        # Introdução
+        ctk.CTkLabel(
+            card, text=GLOSSARIO_INTRO, font=ctk.CTkFont(size=12),
+            anchor="w", justify="left", wraplength=900,
+        ).pack(anchor="w", fill="x", padx=20, pady=(0, 10))
+
+        # Nota destacada sobre unidades de medida
+        nota = ctk.CTkFrame(card, fg_color=("gray85", "gray20"), corner_radius=6)
+        nota.pack(fill="x", padx=20, pady=(0, 12))
+        ctk.CTkLabel(
+            nota, text="ⓘ  Unidades de medida",
+            font=ctk.CTkFont(size=12, weight="bold"), text_color="#3498db", anchor="w",
+        ).pack(anchor="w", padx=12, pady=(10, 2))
+        ctk.CTkLabel(
+            nota, text=GLOSSARIO_UNIDADES, font=ctk.CTkFont(size=12),
+            text_color=("gray20", "gray85"), anchor="w", justify="left", wraplength=880,
+        ).pack(anchor="w", fill="x", padx=12, pady=(0, 10))
+
+        # As 3 estatísticas (sufixos _mean/_se/_worst)
+        ctk.CTkLabel(
+            card, text="Como cada biomarcador é resumido (3 estatísticas por imagem)",
+            font=ctk.CTkFont(size=13, weight="bold"), anchor="w",
+        ).pack(anchor="w", padx=20, pady=(2, 4))
+        for sufixo, (rotulo, expl) in ESTATISTICAS.items():
+            linha = ctk.CTkFrame(card, fg_color="transparent")
+            linha.pack(fill="x", padx=20, pady=1)
+            ctk.CTkLabel(
+                linha, text=f"{rotulo}  (_{sufixo})",
+                font=ctk.CTkFont(size=12, weight="bold"), width=150, anchor="w",
+            ).pack(side="left")
+            ctk.CTkLabel(
+                linha, text=expl, font=ctk.CTkFont(size=12),
+                text_color=("gray25", "gray80"), anchor="w", justify="left", wraplength=730,
+            ).pack(side="left", padx=(8, 0))
+
+        # Tabela alinhada dos 10 biomarcadores-base
+        ctk.CTkLabel(
+            card, text="Os 10 biomarcadores-base",
+            font=ctk.CTkFont(size=13, weight="bold"), anchor="w",
+        ).pack(anchor="w", padx=20, pady=(12, 4))
+
+        tabela = ctk.CTkFrame(card, fg_color="transparent")
+        tabela.pack(fill="x", padx=20, pady=(0, 18))
+        tabela.grid_columnconfigure(0, weight=0, minsize=140)
+        tabela.grid_columnconfigure(1, weight=1)
+        tabela.grid_columnconfigure(2, weight=0, minsize=180)
+
+        cabecalhos = ("Biomarcador", "O que mede", "Unidade")
+        for c, titulo in enumerate(cabecalhos):
+            ctk.CTkLabel(
+                tabela, text=titulo, font=ctk.CTkFont(size=12, weight="bold"),
+                anchor="w", fg_color=("gray75", "gray28"),
+            ).grid(row=0, column=c, sticky="nsew", padx=1, pady=1, ipadx=8, ipady=6)
+
+        for i, (base, (rotulo, mede, unidade)) in enumerate(BIOMARCADORES_BASE.items(), start=1):
+            bg = ("gray92", "gray17") if i % 2 else ("gray87", "gray21")
+            ctk.CTkLabel(
+                tabela, text=rotulo, font=ctk.CTkFont(size=12, weight="bold"),
+                anchor="w", fg_color=bg,
+            ).grid(row=i, column=0, sticky="nsew", padx=1, pady=1, ipadx=8, ipady=6)
+            ctk.CTkLabel(
+                tabela, text=mede[0].upper() + mede[1:], font=ctk.CTkFont(size=12),
+                anchor="w", justify="left", wraplength=430, fg_color=bg,
+            ).grid(row=i, column=1, sticky="nsew", padx=1, pady=1, ipadx=8, ipady=6)
+            ctk.CTkLabel(
+                tabela, text=unidade, font=ctk.CTkFont(size=12), text_color=("gray30", "gray70"),
+                anchor="w", justify="left", wraplength=170, fg_color=bg,
+            ).grid(row=i, column=2, sticky="nsew", padx=1, pady=1, ipadx=8, ipady=6)
 
     def _tornar_clicavel(self, item, chave: str):
         """

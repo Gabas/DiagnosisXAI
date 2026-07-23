@@ -9,10 +9,11 @@ import numpy as np
 import pandas as pd
 
 from core.batch_processor import BatchProcessor
+from core.biomarkers import descricao_coluna
 from core.history_manager import HistoryManager
 from core.inference import ModelLoader
 from core.predictor import PredictorEngine
-from utils.ui import ScrollableFrame, bind_treeview_mousewheel
+from utils.ui import ScrollableFrame, bind_treeview_mousewheel, HeadingTooltip
 from utils.pdf_report import export_batch_report, resolve_reports_dir
 from views.report_window import ReportWindow
 from views.report_window_lr import LogisticReportWindow
@@ -201,6 +202,8 @@ class PredictView(ctk.CTkFrame):
         self.tree = ttk.Treeview(self.preview_frame, show="headings", height=15)
         self.tree.grid(row=1, column=0, padx=(10, 0), pady=(10, 0), sticky="nsew")
         bind_treeview_mousewheel(self.tree)
+        # Tooltip nos cabeçalhos: explica cada biomarcador/coluna ao passar o mouse.
+        self._heading_tooltip = HeadingTooltip(self.tree, descricao_coluna)
 
         scrollbar_y = ctk.CTkScrollbar(self.preview_frame, orientation="vertical", command=self.tree.yview)
         scrollbar_y.grid(row=1, column=1, padx=(0, 10), pady=(10, 0), sticky="ns")
