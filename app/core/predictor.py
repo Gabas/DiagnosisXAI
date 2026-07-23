@@ -81,5 +81,14 @@ class PredictorEngine:
                     probabilidades = modelo_proba.predict_proba(entrada)
                     df_resultado['Certeza_Maligno(%)'] = [round(prob[1] * 100, 2) for prob in probabilidades]
 
+        # Aviso de perfil atípico (fora da distribuição de treino) — independe do
+        # modelo escolhido e sempre usa os atributos padronizados. Sinaliza casos em
+        # que a previsão extrapola para uma região pouco vista no treino.
+        detector = getattr(self.loader, 'ood_detector', None)
+        if detector is not None:
+            features = self.loader.feature_names
+            entrada_ood = df_padronizado[features] if features else df_padronizado
+            df_resultado['Perfil'] = detector.rotulos(entrada_ood)
+
         print("Processamento concluído!")
         return df_resultado

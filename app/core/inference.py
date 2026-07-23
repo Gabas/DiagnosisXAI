@@ -23,6 +23,10 @@ class ModelLoader:
         informativa — usadas apenas para a "certeza" exibida ao clínico. Vazio
         quando o .pkl foi gerado por um notebook sem a etapa de recalibração
         (Seção 14), caso em que o app recai nas probabilidades dos modelos originais.
+    ood_detector : core.ood_detector.OODDetector ou None
+        Detector de perfis atípicos (fora da distribuição de treino), calibrado
+        sobre ``X_train_scaled``. ``None`` quando o treino não está disponível
+        no .pkl.
     explainers : dict
         Explicadores de explicabilidade (XAI) gerados e serializados pelo
         notebook: {'arvore': ..., 'logistica': ...}. Valores None quando o
@@ -35,6 +39,7 @@ class ModelLoader:
         self.feature_names = None
         self.models = {}
         self.calibrated_models = {}
+        self.ood_detector = None
         self.explainers = {}
         self.shap_background = None
         self.shap_importances = {}
@@ -113,5 +118,12 @@ class ModelLoader:
                     from core.explainers import RandomForestExplainer
                     self.explainers['randomforest'] = RandomForestExplainer(
                         self.models['Random Forest'], self.feature_names)
+
+                # Detector de perfis atípicos (OOD): calibrado sobre o treino
+                # padronizado. É leve (uma covariância regularizada), então é
+                # construído no app, sem exigir a regeneração do .pkl.
+                if self.X_train_scaled is not None:
+                    from core.ood_detector import OODDetector
+                    self.ood_detector = OODDetector(self.X_train_scaled)
             else:
                 raise ValueError("O arquivo .pkl está num formato antigo. Execute o notebook novamente.")

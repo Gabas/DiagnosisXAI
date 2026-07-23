@@ -46,6 +46,9 @@ _COLUNAS_RESULTADO = {
     "Diagnóstico_IA":     "Classe prevista pelo modelo selecionado: Maligno ou Benigno.",
     "Certeza_Maligno(%)": "Probabilidade calibrada de o tumor ser Maligno (0–100%). Valores próximos "
                           "de 50% indicam um caso limítrofe, que merece revisão.",
+    "Perfil":             "Indica se o paciente está dentro da distribuição de treino. \"Atípico\" = "
+                          "perfil muito distante dos casos vistos no aprendizado (distância de "
+                          "Mahalanobis além do limiar) — a previsão é menos confiável e merece cautela.",
 }
 
 

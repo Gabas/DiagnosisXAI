@@ -63,6 +63,7 @@ def test_descricao_colunas_de_resultado():
     assert 'Maligno' in descricao_coluna('Diagnóstico_IA')
     assert 'calibrada' in descricao_coluna('Certeza_Maligno(%)')
     assert 'RF' in descricao_coluna('IA_RF')
+    assert 'Atípico' in descricao_coluna('Perfil')
 
 
 def test_descricao_none_para_desconhecida():

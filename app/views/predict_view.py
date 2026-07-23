@@ -152,6 +152,9 @@ class PredictView(ctk.CTkFrame):
         self.btn_run.grid(row=1, column=1, padx=20, pady=10, sticky="w")
         self.lbl_run_error = ctk.CTkLabel(ia_frame, text="", font=ctk.CTkFont(size=12), text_color="#e74c3c", justify="left")
         self.lbl_run_error.grid(row=2, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="w")
+        # Aviso de perfis atípicos (fora da distribuição de treino), preenchido após a inferência.
+        self.lbl_ood = ctk.CTkLabel(ia_frame, text="", font=ctk.CTkFont(size=12), justify="left", wraplength=760)
+        self.lbl_ood.grid(row=3, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="w")
 
         # --- Passo 4: Auditoria (Opcional) ---
         audit_frame = ctk.CTkFrame(container)
@@ -305,6 +308,7 @@ class PredictView(ctk.CTkFrame):
                 self.df_resultado = self.predictor.predict(self.df_padronizado, self.df_limpo, modelo_escolhido)
                 self._update_treeview_with_data(self.df_resultado)
                 self.lbl_run_error.configure(text="")
+                self._atualizar_aviso_ood()
 
                 # Libera o Passo 4 após a IA rodar
                 self.btn_audit.configure(state="normal")
@@ -333,6 +337,33 @@ class PredictView(ctk.CTkFrame):
                 )
             except Exception as e:
                 self.lbl_run_error.configure(text=f"Erro durante a inferência: {e}")
+
+    def _atualizar_aviso_ood(self):
+        """
+        Atualiza o aviso de perfis atípicos (fora da distribuição de treino).
+
+        Lê a coluna ``Perfil`` do resultado (preenchida pelo PredictorEngine) e
+        resume quantos pacientes têm perfil atípico — casos em que a previsão
+        extrapola para uma região pouco vista no treino e é menos confiável.
+        """
+        df = self.df_resultado
+        if df is None or 'Perfil' not in df.columns:
+            self.lbl_ood.configure(text="")
+            return
+
+        total = len(df)
+        atipicos = int((df['Perfil'] == 'Atípico').sum())
+        if atipicos:
+            self.lbl_ood.configure(
+                text=(f"⚠ {atipicos} de {total} paciente(s) com perfil atípico (fora da distribuição "
+                      f"de treino) — interprete essas previsões com cautela."),
+                text_color="#e67e22",
+            )
+        else:
+            self.lbl_ood.configure(
+                text=f"✓ Todos os {total} perfis dentro da distribuição de treino.",
+                text_color="#2ecc71",
+            )
 
     def _relatorio_para_historico(self) -> dict:
         """
