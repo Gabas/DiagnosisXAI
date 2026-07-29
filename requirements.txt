@@ -28,6 +28,9 @@ scikit-posthocs>=0.9    # pós-hoc de Nemenyi após o Friedman
 plotly>=5.0
 yellowbrick>=1.5
 
+# --- Mapa populacional interativo do app (abre no navegador) ---
+bokeh>=3.4
+
 # --- Ambiente Jupyter ---------------------------------------
 jupyterlab>=4.0
 

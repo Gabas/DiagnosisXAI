@@ -710,15 +710,18 @@ class PredictView(ctk.CTkFrame):
 
     def _pacientes_diagnostico(self) -> list:
         """
-        Monta a lista {'indice', 'classe'} do lote a partir do resultado da IA.
+        Monta a lista {'indice', 'classe', ...} do lote a partir do resultado da IA.
 
         Para um único modelo usa a coluna 'Diagnóstico_IA'; no modo de comparação
-        ('Todos') usa o voto da maioria entre as colunas dos modelos.
+        ('Todos') usa o voto da maioria entre as colunas dos modelos. Quando
+        presentes, os sinais de confiabilidade (certeza calibrada, perfil atípico
+        e decisão limítrofe) são incluídos para enriquecer o mapa interativo.
 
         Returns
         -------
         list[dict]
-            Um item por paciente, com índice e classe prevista.
+            Um item por paciente, com índice, classe prevista e, quando houver,
+            'certeza'/'perfil'/'decisao'.
         """
         df = self.df_resultado
         indices = list(df.index)
@@ -730,7 +733,22 @@ class PredictView(ctk.CTkFrame):
                 'Maligno' if (linha == 'Maligno').sum() * 2 >= len(colunas_ia) else 'Benigno'
                 for _, linha in df[colunas_ia].iterrows()
             ]
-        return [{'indice': int(indices[i]), 'classe': classes[i]} for i in range(len(indices))]
+
+        certezas = df['Certeza_Maligno(%)'] if 'Certeza_Maligno(%)' in df.columns else None
+        perfis = df['Perfil'] if 'Perfil' in df.columns else None
+        decisoes = df['Decisão'] if 'Decisão' in df.columns else None
+
+        pacientes = []
+        for i in range(len(indices)):
+            p = {'indice': int(indices[i]), 'classe': classes[i]}
+            if certezas is not None:
+                p['certeza'] = f"{certezas.iloc[i]:.2f}%"
+            if perfis is not None:
+                p['perfil'] = perfis.iloc[i]
+            if decisoes is not None:
+                p['decisao'] = decisoes.iloc[i]
+            pacientes.append(p)
+        return pacientes
 
     def run_audit(self):
         

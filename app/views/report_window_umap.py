@@ -8,6 +8,8 @@ IA. É independente do modelo — serve para situar os novos pacientes em relaç
 ponderada dos vizinhos no embedding (feita no app, sem depender do umap).
 """
 
+import webbrowser
+
 import customtkinter as ctk
 from tkinter import ttk
 
@@ -93,6 +95,17 @@ class UmapMapWindow(ctk.CTkToplevel):
                   f"Maligno: {malignos}    Benigno: {n - malignos}"),
             font=ctk.CTkFont(size=13), text_color="gray",
         ).pack(anchor="w")
+
+        # Versão interativa (Bokeh): abre no navegador com hover, zoom e legenda.
+        ctk.CTkButton(
+            header, text="🔍  Ver mapa interativo (navegador)",
+            command=self._abrir_interativo, width=270,
+            fg_color="#8e44ad", hover_color="#9b59b6",
+        ).pack(anchor="w", pady=(10, 0))
+        self._lbl_interativo = ctk.CTkLabel(
+            header, text="", font=ctk.CTkFont(size=11), text_color="gray",
+        )
+        self._lbl_interativo.pack(anchor="w", pady=(2, 0))
 
     def _build_plot(self):
         """Constrói o mapa UMAP (treino ao fundo + pacientes do lote)."""
@@ -185,6 +198,28 @@ class UmapMapWindow(ctk.CTkToplevel):
             self._tree.insert("", "end", iid=str(i),
                               values=(p['indice'], p['classe']), tags=(p['classe'],))
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
+
+    def _abrir_interativo(self):
+        """
+        Gera o mapa populacional interativo (Bokeh) e o abre no navegador.
+
+        Bokeh renderiza para HTML/JS — o mapa é salvo em arquivo autocontido e
+        aberto no navegador padrão, complementando o mapa estático desta janela.
+        """
+        try:
+            from utils.bokeh_map import gerar_mapa_html
+            caminho = gerar_mapa_html(
+                self._train_2d, self._train_y, self._batch_2d, self._pacientes)
+            webbrowser.open(f"file://{caminho}")
+            self._lbl_interativo.configure(
+                text="Mapa interativo aberto no navegador.", text_color="#2ecc71")
+        except ImportError:
+            self._lbl_interativo.configure(
+                text="Instale o Bokeh para o mapa interativo:  pip install bokeh",
+                text_color="#e74c3c")
+        except Exception as e:
+            self._lbl_interativo.configure(
+                text=f"Não foi possível gerar o mapa interativo: {e}", text_color="#e74c3c")
 
     def _on_select(self, _event=None):
         """Destaca no mapa o paciente selecionado."""
