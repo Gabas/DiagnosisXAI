@@ -610,22 +610,25 @@ class PredictView(ctk.CTkFrame):
         feat, cl, cr = t.feature, t.children_left, t.children_right
         wn, impureza = t.weighted_n_node_samples, t.impurity
 
-        imp = np.zeros(len(exp.feature_names))
+        # Ganho de entropia bruto por atributo: soma, em cada nó de decisão, da
+        # redução ponderada de entropia (impureza) do split. Como criterion='entropy',
+        # impureza[node] é a entropia do nó; este acumulado é o ganho de informação
+        # total que o atributo trouxe à árvore.
+        ganho = np.zeros(len(exp.feature_names))
         for node in range(len(feat)):
             esq = cl[node]
             if esq != -1:  # nó de decisão (não folha)
                 dir_ = cr[node]
-                imp[feat[node]] += (wn[node] * impureza[node]
-                                    - wn[esq] * impureza[esq]
-                                    - wn[dir_] * impureza[dir_])
-        total = imp.sum()
-        if total > 0:
-            imp = imp / total
+                ganho[feat[node]] += (wn[node] * impureza[node]
+                                      - wn[esq] * impureza[esq]
+                                      - wn[dir_] * impureza[dir_])
+        total = ganho.sum() or 1.0
 
-        pares = [(exp.feature_names[i], float(imp[i]))
-                 for i in range(len(imp)) if imp[i] > 0]
-        pares.sort(key=lambda p: p[1], reverse=True)
-        return pares[:10]
+        # (atributo, participação normalizada, ganho de entropia bruto)
+        trios = [(exp.feature_names[i], float(ganho[i] / total), float(ganho[i]))
+                 for i in range(len(ganho)) if ganho[i] > 0]
+        trios.sort(key=lambda t: t[1], reverse=True)
+        return trios[:10]
 
     def _abrir_relatorio_selecionado(self):
         """Abre o relatório atualmente selecionado no menu do Passo 5."""
@@ -835,7 +838,11 @@ class PredictView(ctk.CTkFrame):
         itens = dados.get('importancias', [])
         if tipo == 'logistica':
             return [(d['feature'], f"{d['coeficiente']:+.2f} ({d['direcao']})") for d in itens]
-        return [(nome, f"{valor * 100:.2f}%") for nome, valor in itens]
+        if tipo == 'arvore':
+            # (nome, participação, ganho_entropia) — mostra a redução de entropia.
+            return [(item[0], f"Δentropia {item[2]:.3f}" if len(item) > 2
+                     else f"{item[1] * 100:.2f}%") for item in itens]
+        return [(item[0], f"{item[1] * 100:.2f}%") for item in itens]
 
     def _nome_base_export(self) -> str:
         """Monta um nome de arquivo sugerido para a exportação (sem extensão)."""

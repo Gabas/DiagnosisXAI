@@ -15,7 +15,7 @@ matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from utils.ui import bind_treeview_mousewheel, responsive_geometry
+from utils.ui import adicionar_barra_zoom, bind_treeview_mousewheel, responsive_geometry
 from views.report_common import PatientPDFExportMixin
 
 
@@ -195,11 +195,16 @@ class KNNReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         self._canvas.draw()
         self._canvas.get_tk_widget().grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 4))
 
+        # Barra de zoom/pan interativa (lupa para explorar a vizinhança).
+        barra = adicionar_barra_zoom(self._canvas, frame)
+        barra.grid(row=2, column=0, sticky="w", padx=12)
+
         ctk.CTkLabel(
             frame,
-            text="Posições aproximadas — os vizinhos são calculados nos 30 biomarcadores.",
-            font=ctk.CTkFont(size=10), text_color="gray",
-        ).grid(row=2, column=0, sticky="w", padx=16, pady=(0, 10))
+            text="Use a lupa para dar zoom. Posições aproximadas — os vizinhos são "
+                 "calculados nos 30 biomarcadores.",
+            font=ctk.CTkFont(size=10), text_color="gray", wraplength=420,
+        ).grid(row=3, column=0, sticky="w", padx=16, pady=(0, 10))
 
     def _build_per_patient(self, explicacoes: list):
         """

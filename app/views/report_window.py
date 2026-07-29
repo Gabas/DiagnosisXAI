@@ -97,34 +97,49 @@ class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         frame.grid_columnconfigure(1, weight=1)
 
         ctk.CTkLabel(
-            frame, text="Características mais decisivas (visão geral do modelo)",
+            frame, text="Ganho de informação por biomarcador (redução de entropia)",
             font=ctk.CTkFont(size=15, weight="bold"),
-        ).grid(row=0, column=0, columnspan=3, sticky="w", padx=16, pady=(12, 8))
+        ).grid(row=0, column=0, columnspan=3, sticky="w", padx=16, pady=(12, 2))
+        ctk.CTkLabel(
+            frame,
+            text="Critério de treino: entropia. O valor é a redução total de entropia "
+                 "(ganho de informação) que cada atributo trouxe à árvore; a barra é a "
+                 "participação relativa.",
+            font=ctk.CTkFont(size=11), text_color="gray", justify="left", wraplength=880,
+        ).grid(row=1, column=0, columnspan=3, sticky="w", padx=16, pady=(0, 8))
 
         if not importancias:
             ctk.CTkLabel(
                 frame, text="Sem informação de importância disponível.",
                 text_color="gray",
-            ).grid(row=1, column=0, sticky="w", padx=16, pady=(0, 12))
+            ).grid(row=2, column=0, sticky="w", padx=16, pady=(0, 12))
             return
 
-        maior = importancias[0][1] or 1.0
-        for i, (nome, imp) in enumerate(importancias, start=1):
+        # Aceita tanto (nome, participação) quanto (nome, participação, ganho_entropia).
+        def _desempacota(item):
+            nome, share = item[0], item[1]
+            ganho = item[2] if len(item) > 2 else None
+            return nome, share, ganho
+
+        maior = _desempacota(importancias[0])[1] or 1.0
+        for i, item in enumerate(importancias, start=2):
+            nome, share, ganho = _desempacota(item)
             ctk.CTkLabel(
                 frame, text=nome, anchor="w", font=ctk.CTkFont(size=12),
             ).grid(row=i, column=0, sticky="w", padx=(16, 8), pady=3)
 
             barra = ctk.CTkProgressBar(frame, height=14)
-            barra.set(imp / maior)
+            barra.set(share / maior)
             barra.grid(row=i, column=1, sticky="ew", padx=8, pady=3)
 
+            texto = f"Δentropia {ganho:.3f}" if ganho is not None else f"{share * 100:.1f}%"
             ctk.CTkLabel(
-                frame, text=f"{imp * 100:.1f}%", width=60, anchor="e",
+                frame, text=texto, width=130, anchor="e",
                 font=ctk.CTkFont(size=12), text_color="gray",
             ).grid(row=i, column=2, sticky="e", padx=(8, 16), pady=3)
 
         ctk.CTkFrame(frame, height=8, fg_color="transparent").grid(
-            row=len(importancias) + 1, column=0
+            row=len(importancias) + 2, column=0
         )
 
     def _build_per_patient(self, explicacoes: list):

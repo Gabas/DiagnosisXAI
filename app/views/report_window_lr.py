@@ -9,12 +9,13 @@ detalhamento, por paciente, das características que mais influenciaram a decis�
 import customtkinter as ctk
 from tkinter import ttk
 
+import numpy as np
 import matplotlib
 matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from utils.ui import bind_treeview_mousewheel, responsive_geometry
+from utils.ui import adicionar_barra_zoom, bind_treeview_mousewheel, responsive_geometry
 from views.report_common import PatientPDFExportMixin
 
 
@@ -62,7 +63,9 @@ class LogisticReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
 
         self._explicacoes = explicacoes
         self._por_indice = {str(e['indice']): e for e in explicacoes}
-        self._coords = {str(e['indice']): (e['x_plot'], e['y_plot']) for e in explicacoes}
+        # Coordenadas na curva logística: (escore z = w·x+b, P(Maligno)).
+        self._coords = {str(e['indice']): (e['distancia'], e['probabilidade'] / 100.0)
+                        for e in explicacoes}
         self._highlight = None
 
         self._build_header()
@@ -142,16 +145,18 @@ class LogisticReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
 
     def _build_plot(self, explicacoes: list):
         """
-        Constrói o gráfico da fronteira de decisão da Regressão Logística.
+        Constrói o gráfico da função de decisão (curva logística).
 
-        O eixo X é a distância (com sinal) até a fronteira real; a linha
-        tracejada em x = 0 é o limiar de malignidade. O eixo Y apenas espalha
-        os pacientes e não afeta o diagnóstico.
+        Eixo X: o escore linear z = w·x + b (a "distância" com sinal até a
+        fronteira). Eixo Y: a probabilidade P(Maligno) = σ(z). A curva em S é a
+        própria função logística que converte z em probabilidade; cada paciente
+        fica exatamente sobre ela, em (seu z, sua P). A linha vertical em z = 0
+        e a horizontal em P = 0,5 se cruzam no ponto de decisão.
 
         Parameters
         ----------
         explicacoes : list[dict]
-            Explicações por paciente, com coordenadas 'x_plot'/'y_plot'.
+            Explicações por paciente, com 'distancia' (z) e 'probabilidade'.
         """
         frame = ctk.CTkFrame(self)
         frame.grid(row=1, column=1, sticky="nsew", padx=(10, 20), pady=10)
@@ -159,12 +164,12 @@ class LogisticReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         frame.grid_rowconfigure(1, weight=1)
 
         ctk.CTkLabel(
-            frame, text="Fronteira de decisão",
+            frame, text="Função de decisão — curva logística",
             font=ctk.CTkFont(size=15, weight="bold"),
         ).grid(row=0, column=0, sticky="w", padx=16, pady=(12, 4))
 
-        xs = [e['x_plot'] for e in explicacoes]
-        ys = [e['y_plot'] for e in explicacoes]
+        zs = [e['distancia'] for e in explicacoes]
+        ps = [e['probabilidade'] / 100.0 for e in explicacoes]
         cores = [self.COR_MALIGNO if e['classe'] == 'Maligno' else self.COR_BENIGNO
                  for e in explicacoes]
 
@@ -173,48 +178,53 @@ class LogisticReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         ax = fig.add_subplot(111)
         ax.set_facecolor(self.COR_FUNDO)
 
-        if xs:
-            xmin, xmax = min(xs + [0.0]), max(xs + [0.0])
-            pad = (xmax - xmin) * 0.1 or 1.0
-            xmin, xmax = xmin - pad, xmax + pad
-        else:
-            xmin, xmax = -1.0, 1.0
-        ax.set_xlim(xmin, xmax)
+        limite = max(4.0, max((abs(z) for z in zs), default=0.0) * 1.15)
+        grade = np.linspace(-limite, limite, 300)
+        sigmoide = 1.0 / (1.0 + np.exp(-grade))
 
-        # Regiões de decisão (apenas contexto visual; o modelo decide em x = 0).
-        ax.axvspan(xmin, 0, color=self.COR_BENIGNO, alpha=0.08)
-        ax.axvspan(0, xmax, color=self.COR_MALIGNO, alpha=0.08)
-        ax.axvline(0, color="white", linewidth=1.5, linestyle="--")
+        # Regiões de decisão + limiares (o modelo decide em z = 0  ⇔  P = 0,5).
+        ax.axvspan(-limite, 0, color=self.COR_BENIGNO, alpha=0.07)
+        ax.axvspan(0, limite, color=self.COR_MALIGNO, alpha=0.07)
+        ax.axhline(0.5, color="gray", linewidth=1.0, linestyle=":", zorder=1)
+        ax.axvline(0, color="white", linewidth=1.3, linestyle="--", zorder=1)
 
-        ax.scatter(xs, ys, c=cores, s=22, alpha=0.85, edgecolors="none", zorder=3)
+        # A curva logística σ(z) e cada paciente sobre ela.
+        ax.plot(grade, sigmoide, color="#5dade2", linewidth=2.0, zorder=2,
+                label="σ(z) = 1 / (1 + e^−z)")
+        ax.scatter(zs, ps, c=cores, s=26, alpha=0.9, edgecolors="white",
+                   linewidths=0.4, zorder=4)
 
-        # Marcador (vazio) usado para destacar o paciente selecionado.
+        # Marcador (vazio) para destacar o paciente selecionado.
         self._highlight = ax.scatter(
-            [], [], s=160, facecolors="none", edgecolors="#f1c40f",
-            linewidths=2.2, zorder=5)
+            [], [], s=170, facecolors="none", edgecolors="#f1c40f",
+            linewidths=2.2, zorder=6)
 
-        ax.set_xlabel("←  Benigno      distância da fronteira      Maligno  →",
+        ax.set_xlim(-limite, limite)
+        ax.set_ylim(-0.03, 1.03)
+        ax.set_xlabel("escore linear  z = w·x + b   (←  Benigno   ·   Maligno  →)",
                       color="white", fontsize=9)
-        ax.set_ylabel("variação entre pacientes", color="gray", fontsize=9)
+        ax.set_ylabel("P(Maligno) = σ(z)", color="white", fontsize=9)
         ax.tick_params(colors="gray", labelsize=8)
         for spine in ax.spines.values():
             spine.set_color("gray")
-
-        from matplotlib.lines import Line2D
-        legenda = [
-            Line2D([0], [0], marker='o', color='none', markerfacecolor=self.COR_MALIGNO,
-                   markersize=7, label='Maligno'),
-            Line2D([0], [0], marker='o', color='none', markerfacecolor=self.COR_BENIGNO,
-                   markersize=7, label='Benigno'),
-        ]
-        ax.legend(handles=legenda, facecolor=self.COR_FUNDO, edgecolor="gray",
-                  labelcolor="white", fontsize=8, loc="best")
+        ax.legend(facecolor=self.COR_FUNDO, edgecolor="gray", labelcolor="white",
+                  fontsize=8, loc="upper left")
         fig.tight_layout()
 
         self._ax = ax
         self._canvas = FigureCanvasTkAgg(fig, master=frame)
         self._canvas.draw()
-        self._canvas.get_tk_widget().grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        self._canvas.get_tk_widget().grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 4))
+
+        barra = adicionar_barra_zoom(self._canvas, frame)
+        barra.grid(row=2, column=0, sticky="w", padx=12)
+        ctk.CTkLabel(
+            frame,
+            text="X = escore linear z (distância à fronteira). Y = probabilidade P(Maligno) "
+                 "= σ(z). A curva converte z em probabilidade; z = 0 ⇔ P = 50% é a fronteira. "
+                 "Use a lupa para dar zoom.",
+            font=ctk.CTkFont(size=10), text_color="gray", wraplength=420, justify="left",
+        ).grid(row=3, column=0, sticky="w", padx=16, pady=(0, 10))
 
     def _build_per_patient(self, explicacoes: list):
         """
@@ -328,11 +338,20 @@ class LogisticReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         str
             Texto com diagnóstico, probabilidade, distância e fatores decisivos.
         """
+        z = e['distancia']
+        decisao = "z ≥ 0  →  Maligno" if z >= 0 else "z < 0  →  Benigno"
         linhas = [
             f"PACIENTE {e['indice']}",
             f"Diagnóstico da IA: {e['classe']}",
-            f"Probabilidade de malignidade: {e['probabilidade']:.1f}%",
-            f"Distância da fronteira: {e['distancia']:+.2f}  "
+            "",
+            "FUNÇÃO DE DECISÃO (Regressão Logística)",
+            "   z = w·x + b   (soma ponderada dos 30 biomarcadores",
+            "                  padronizados, mais o viés b)",
+            f"   z = {z:+.3f}",
+            f"   P(Maligno) = σ(z) = 1 / (1 + e^(−z)) = {e['probabilidade']:.1f}%",
+            f"   Decisão:  {decisao}",
+            "",
+            f"Distância da fronteira: {z:+.2f}  "
             f"(quanto mais longe de 0, mais confiante)",
         ]
         if e['limitrofe']:

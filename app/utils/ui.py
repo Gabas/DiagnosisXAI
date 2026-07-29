@@ -119,6 +119,39 @@ def bind_treeview_mousewheel(tree, rows: int = 3):
     tree.bind("<MouseWheel>", _win_mac, add="+")
 
 
+def adicionar_barra_zoom(canvas, parent):
+    """
+    Adiciona a barra de navegação do matplotlib (zoom/pan/home/salvar) a um gráfico.
+
+    Retorna a barra já criada com ``pack_toolbar=False`` para poder ser posicionada
+    por ``grid`` pelo chamador. Dá ao usuário zoom e deslocamento interativos sobre
+    uma figura embutida via ``FigureCanvasTkAgg``.
+
+    Parameters
+    ----------
+    canvas : matplotlib.backends.backend_tkagg.FigureCanvasTkAgg
+        Canvas do gráfico a controlar.
+    parent : tkinter widget
+        Frame onde a barra será inserida.
+
+    Returns
+    -------
+    matplotlib.backends.backend_tkagg.NavigationToolbar2Tk
+        A barra criada (posicione-a com ``.grid(...)``).
+    """
+    from matplotlib.backends.backend_tkagg import NavigationToolbar2Tk
+
+    barra = NavigationToolbar2Tk(canvas, parent, pack_toolbar=False)
+    barra.update()
+    try:
+        barra.configure(background="#2b2b2b")
+        for filho in barra.winfo_children():
+            filho.configure(background="#2b2b2b")
+    except Exception:
+        pass  # estilo é cosmético; a funcionalidade não depende dele
+    return barra
+
+
 class HeadingTooltip:
     """
     Tooltip flutuante para os cabeçalhos de um ``ttk.Treeview``.

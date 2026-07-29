@@ -11,6 +11,8 @@ vetores de suporte em destaque — os únicos pacientes de treino que de fato
 participam da decisão.
 """
 
+import webbrowser
+
 import customtkinter as ctk
 from tkinter import ttk
 
@@ -20,7 +22,7 @@ matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from utils.ui import bind_treeview_mousewheel, responsive_geometry
+from utils.ui import adicionar_barra_zoom, bind_treeview_mousewheel, responsive_geometry
 from views.report_common import PatientPDFExportMixin
 
 
@@ -244,12 +246,26 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         self._canvas.draw()
         self._canvas.get_tk_widget().grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 4))
 
+        # Zoom/pan no mapa.
+        barra = adicionar_barra_zoom(self._canvas, frame)
+        barra.grid(row=2, column=0, sticky="w", padx=12)
+
+        # Margem "visível": gráfico interativo (Bokeh) da distância à fronteira.
+        ctk.CTkButton(
+            frame, text="🔍  Ver margem interativa (navegador)",
+            command=self._abrir_margem_interativa, width=280,
+            fg_color="#8e44ad", hover_color="#9b59b6",
+        ).grid(row=3, column=0, sticky="w", padx=12, pady=(8, 0))
+        self._lbl_margem = ctk.CTkLabel(
+            frame, text="", font=ctk.CTkFont(size=11), text_color="gray")
+        self._lbl_margem.grid(row=4, column=0, sticky="w", padx=16, pady=(2, 0))
+
         ctk.CTkLabel(
             frame,
             text="Tamanho/opacidade do paciente = confiança do modelo. "
                  "Selecione um paciente para ver seus vetores de suporte.",
             font=ctk.CTkFont(size=10), text_color="gray", wraplength=420,
-        ).grid(row=2, column=0, sticky="w", padx=16, pady=(0, 10))
+        ).grid(row=5, column=0, sticky="w", padx=16, pady=(4, 10))
 
     def _build_per_patient(self, explicacoes: list):
         """
@@ -331,6 +347,28 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             primeiro = str(explicacoes[0]['indice'])
             self._tree.selection_set(primeiro)
             self._tree.focus(primeiro)
+
+    def _abrir_margem_interativa(self):
+        """
+        Gera o gráfico interativo da margem do SVM (Bokeh) e o abre no navegador.
+
+        Torna a margem "visível": posiciona cada paciente pelo escore de decisão
+        z, com a faixa entre z = −1 e z = +1 (a margem maximizada pelo SVM) em
+        destaque. Hover mostra os detalhes de cada paciente.
+        """
+        try:
+            from utils.bokeh_map import gerar_margem_svm_html
+            caminho = gerar_margem_svm_html(self._explicacoes)
+            webbrowser.open(f"file://{caminho}")
+            self._lbl_margem.configure(
+                text="Gráfico da margem aberto no navegador.", text_color="#2ecc71")
+        except ImportError:
+            self._lbl_margem.configure(
+                text="Instale o Bokeh para o gráfico interativo:  pip install bokeh",
+                text_color="#e74c3c")
+        except Exception as e:
+            self._lbl_margem.configure(
+                text=f"Não foi possível gerar o gráfico: {e}", text_color="#e74c3c")
 
     def _on_select(self, _event=None):
         """Atualiza o detalhe e destaca, no mapa, os vetores de suporte do paciente."""
