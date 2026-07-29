@@ -17,8 +17,9 @@ Software de apoio ao diagnóstico preditivo de câncer de mama com Inteligência
 6. [Estrutura do Repositório](#estrutura-do-repositório)
 7. [Base de Dados](#base-de-dados)
 8. [Modelos Implementados](#modelos-implementados)
-9. [Cronograma](#cronograma)
-10. [Referências](#referências)
+9. [Confiabilidade da Predição (XAI)](#confiabilidade-da-predição-xai)
+10. [Cronograma](#cronograma)
+11. [Referências](#referências)
 
 ---
 
@@ -164,7 +165,9 @@ A janela do aplicativo abrirá. Navegue pelas abas:
 |---|---|
 | **Início** | Tela inicial com status do sistema |
 | **Novo Diagnóstico** | Pipeline completo: importar CSV → padronizar → executar IA → auditar |
-| **Sobre** | Informações sobre o projeto, base de dados e tecnologias |
+| **Sobre** | Informações sobre o projeto, base de dados, tecnologias e o glossário de biomarcadores |
+
+Além do diagnóstico, a tabela de resultados traz colunas de **confiabilidade** (certeza calibrada, caso limítrofe e perfil atípico) — ver [Confiabilidade da Predição](#confiabilidade-da-predição-xai).
 
 ### Formato esperado do CSV de entrada
 
@@ -212,8 +215,10 @@ DiagnosisXAI/
 ├── app/
 │   ├── core/
 │   │   ├── batch_processor.py   # Limpeza e padronização Z-score
+│   │   ├── biomarkers.py        # Glossário dos 30 atributos (descrições + tooltips)
 │   │   ├── inference.py         # Carregamento dos modelos do .pkl
-│   │   ├── predictor.py         # Motor de inferência (diagnóstico)
+│   │   ├── ood_detector.py      # Aviso de perfil atípico (fora da distribuição)
+│   │   ├── predictor.py         # Motor de inferência (diagnóstico + colunas de confiabilidade)
 │   │   └── xai_generator.py     # Geração de gráficos SHAP/UMAP
 │   ├── utils/
 │   │   ├── config.py            # Constantes e caminhos globais
@@ -281,7 +286,32 @@ Além do desempenho num único conjunto de teste, os modelos passam por três an
 | **Significância estatística** | As diferenças *entre modelos* são reais ou ruído? | Teste pareado 5×2cv (Dietterich) + Friedman com pós-hoc de Nemenyi (α = 0,05) |
 | **Calibração** | A *probabilidade* prevista corresponde à frequência real? | Diagrama de confiabilidade, escore de Brier e ECE; recalibração por escalonamento de Platt |
 
-As probabilidades exibidas pelo App na coluna **"Certeza (%)"** usam os modelos **recalibrados** (Seção 14), tornando a confiança apresentada ao clínico mais fiel — sem alterar a classe prevista pelos modelos originais.
+As probabilidades **recalibradas** (Seção 14) alimentam a coluna "Certeza (%)" do App — ver [Confiabilidade da Predição](#confiabilidade-da-predição-xai).
+
+---
+
+## Confiabilidade da Predição (XAI)
+
+Além do diagnóstico, o App comunica **quando confiar menos na previsão** — princípio central da IA explicável aplicada ao apoio à decisão clínica. Para cada paciente, a tabela de resultados (e os arquivos CSV/PDF exportados) traz:
+
+| Coluna | O que informa |
+|---|---|
+| `Diagnóstico_IA` | Classe prevista (Maligno/Benigno) pelo modelo selecionado |
+| `Certeza_Maligno(%)` | Probabilidade **calibrada** de malignidade (0–100%) |
+| `Decisão` | `Limítrofe` quando a certeza está perto de 50% (decisão incerta); senão `Definida` |
+| `Perfil` | `Atípico` quando o paciente está fora da distribuição de treino; senão `Típico` |
+
+As três últimas formam um **trio de confiabilidade** complementar:
+
+1. **Calibração** — a certeza exibida corresponde à frequência real de malignidade (validada por escore de Brier e ECE; recalibração por escalonamento de Platt, Seção 14 do notebook). Sem isso, "90%" pode não significar 90%.
+2. **Aviso de perfil atípico (*out-of-distribution*)** — mede a distância de **Mahalanobis** (covariância regularizada de Ledoit-Wolf) do paciente ao centro do treino, no espaço completo dos 30 atributos padronizados. Acima do percentil 99 do treino, o perfil é marcado como atípico: o modelo está extrapolando para uma região pouco vista. *(A projeção UMAP 2D não é usada aqui — reduzir a 2D descartaria justamente a informação necessária para julgar atipicidade.)*
+3. **Flag de caso limítrofe** — como a certeza é calibrada, uma probabilidade a ±10 pontos de 50% reflete incerteza real de decisão: um pequeno deslocamento inverteria o diagnóstico. Esses casos são sinalizados para revisão humana.
+
+> Em conjunto, esses sinais permitem ao sistema não apenas prever, mas **avisar quando a previsão é menos confiável** — seja porque a decisão em si é incerta (limítrofe), seja porque o próprio paciente é atípico em relação ao que o modelo aprendeu (OOD).
+
+### Glossário de biomarcadores (in-app)
+
+Para completar a explicabilidade, a aba **Sobre** traz um glossário dos 30 atributos: o que cada biomarcador mede, o significado das 3 estatísticas (`_mean`/`_se`/`_worst`) e — um ponto de honestidade científica — que a maioria **não tem unidade física** (são índices adimensionais ou medidas na escala de pixel da imagem, não em milímetros), além de serem padronizados por Z-score antes da predição. As mesmas descrições aparecem como *tooltip* ao passar o mouse sobre os cabeçalhos da tabela de resultados.
 
 ---
 
