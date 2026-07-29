@@ -66,6 +66,29 @@ def test_predict_svm_inclui_coluna_de_certeza(loader, lote_processado):
     assert resultado['Certeza_Maligno(%)'].between(0, 100).all()
 
 
+@pytest.mark.parametrize("certeza, esperado", [
+    (50, 'Limítrofe'), (45, 'Limítrofe'), (55, 'Limítrofe'),
+    (40, 'Limítrofe'), (60, 'Limítrofe'),          # bordas inclusivas (±10)
+    (39.9, 'Definida'), (60.1, 'Definida'), (2, 'Definida'), (99, 'Definida'),
+])
+def test_classificar_decisao(certeza, esperado):
+    assert PredictorEngine.classificar_decisao(certeza) == esperado
+
+
+def test_predict_svm_inclui_coluna_decisao(loader, lote_processado):
+    df_scaled, df_raw = lote_processado
+    resultado = PredictorEngine(loader).predict(df_scaled, df_raw, 'SVM')
+    assert 'Decisão' in resultado.columns
+    assert set(resultado['Decisão'].unique()) <= {'Limítrofe', 'Definida'}
+
+
+def test_predict_arvore_omite_coluna_decisao(loader, lote_processado):
+    """Sem certeza informativa, a Árvore não recebe a marcação de decisão."""
+    df_scaled, df_raw = lote_processado
+    resultado = PredictorEngine(loader).predict(df_scaled, df_raw, 'Árvore de Decisão')
+    assert 'Decisão' not in resultado.columns
+
+
 def test_predict_todos_gera_uma_coluna_ia_por_modelo(loader, lote_processado):
     df_scaled, df_raw = lote_processado
     engine = PredictorEngine(loader)

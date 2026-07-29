@@ -49,6 +49,9 @@ _COLUNAS_RESULTADO = {
     "Perfil":             "Indica se o paciente está dentro da distribuição de treino. \"Atípico\" = "
                           "perfil muito distante dos casos vistos no aprendizado (distância de "
                           "Mahalanobis além do limiar) — a previsão é menos confiável e merece cautela.",
+    "Decisão":            "\"Limítrofe\" quando a certeza calibrada está perto de 50% (a até 10 pontos) — "
+                          "a decisão é incerta e um pequeno deslocamento inverteria o diagnóstico, "
+                          "então recomenda-se revisão. \"Definida\" caso contrário.",
 }
 
 

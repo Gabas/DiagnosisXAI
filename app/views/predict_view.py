@@ -154,7 +154,10 @@ class PredictView(ctk.CTkFrame):
         self.lbl_run_error.grid(row=2, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="w")
         # Aviso de perfis atípicos (fora da distribuição de treino), preenchido após a inferência.
         self.lbl_ood = ctk.CTkLabel(ia_frame, text="", font=ctk.CTkFont(size=12), justify="left", wraplength=760)
-        self.lbl_ood.grid(row=3, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="w")
+        self.lbl_ood.grid(row=3, column=0, columnspan=2, padx=20, pady=(0, 4), sticky="w")
+        # Aviso de decisões limítrofes (certeza calibrada perto de 50%).
+        self.lbl_limitrofe = ctk.CTkLabel(ia_frame, text="", font=ctk.CTkFont(size=12), justify="left", wraplength=760)
+        self.lbl_limitrofe.grid(row=4, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="w")
 
         # --- Passo 4: Auditoria (Opcional) ---
         audit_frame = ctk.CTkFrame(container)
@@ -309,6 +312,7 @@ class PredictView(ctk.CTkFrame):
                 self._update_treeview_with_data(self.df_resultado)
                 self.lbl_run_error.configure(text="")
                 self._atualizar_aviso_ood()
+                self._atualizar_aviso_limitrofe()
 
                 # Libera o Passo 4 após a IA rodar
                 self.btn_audit.configure(state="normal")
@@ -362,6 +366,34 @@ class PredictView(ctk.CTkFrame):
         else:
             self.lbl_ood.configure(
                 text=f"✓ Todos os {total} perfis dentro da distribuição de treino.",
+                text_color="#2ecc71",
+            )
+
+    def _atualizar_aviso_limitrofe(self):
+        """
+        Atualiza o aviso de decisões limítrofes (certeza calibrada perto de 50%).
+
+        Lê a coluna ``Decisão`` do resultado (preenchida pelo PredictorEngine) e
+        resume quantos casos são limítrofes — decisões incertas em que um pequeno
+        deslocamento inverteria o diagnóstico, recomendando revisão humana. Quando
+        o modelo não fornece certeza (ex.: Árvore de Decisão), o aviso fica vazio.
+        """
+        df = self.df_resultado
+        if df is None or 'Decisão' not in df.columns:
+            self.lbl_limitrofe.configure(text="")
+            return
+
+        total = len(df)
+        limitrofes = int((df['Decisão'] == 'Limítrofe').sum())
+        if limitrofes:
+            self.lbl_limitrofe.configure(
+                text=(f"⚠ {limitrofes} de {total} caso(s) limítrofe(s) (certeza calibrada perto de "
+                      f"50%) — recomenda-se revisão."),
+                text_color="#e67e22",
+            )
+        else:
+            self.lbl_limitrofe.configure(
+                text=f"✓ Nenhuma decisão limítrofe entre os {total} casos.",
                 text_color="#2ecc71",
             )
 

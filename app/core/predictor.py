@@ -27,6 +27,30 @@ class PredictorEngine:
     # puras, portanto a probabilidade é sempre 100% ou 0% — omitimos a coluna.
     MODELOS_SEM_CERTEZA = {'Árvore de Decisão'}
 
+    # Meia-largura (em pontos percentuais) da zona limítrofe em torno de 50%. Como a
+    # certeza exibida é CALIBRADA, uma probabilidade nesta faixa reflete incerteza real
+    # de decisão — um pequeno deslocamento inverteria o diagnóstico. Casos assim são
+    # marcados como "Limítrofe" para revisão humana.
+    MARGEM_LIMITROFE = 10.0
+
+    @classmethod
+    def classificar_decisao(cls, certeza_maligno: float) -> str:
+        """
+        Classifica a decisão como 'Limítrofe' ou 'Definida' a partir da certeza.
+
+        Parameters
+        ----------
+        certeza_maligno : float
+            Probabilidade calibrada de malignidade, em porcentagem (0–100).
+
+        Returns
+        -------
+        str
+            'Limítrofe' se a certeza estiver a até ``MARGEM_LIMITROFE`` pontos de
+            50%; caso contrário, 'Definida'.
+        """
+        return 'Limítrofe' if abs(certeza_maligno - 50.0) <= cls.MARGEM_LIMITROFE else 'Definida'
+
     def predict(self, df_padronizado: pd.DataFrame, df_limpo: pd.DataFrame, model_name: str) -> pd.DataFrame:
         """
         Gera as previsões para um lote utilizando um ou todos os modelos.
@@ -79,7 +103,10 @@ class PredictorEngine:
                 modelo_proba = calibrados.get(model_name, modelo)
                 if hasattr(modelo_proba, 'predict_proba'):
                     probabilidades = modelo_proba.predict_proba(entrada)
-                    df_resultado['Certeza_Maligno(%)'] = [round(prob[1] * 100, 2) for prob in probabilidades]
+                    certezas = [round(prob[1] * 100, 2) for prob in probabilidades]
+                    df_resultado['Certeza_Maligno(%)'] = certezas
+                    # Marca decisões limítrofes (certeza calibrada perto de 50%) para revisão.
+                    df_resultado['Decisão'] = [self.classificar_decisao(c) for c in certezas]
 
         # Aviso de perfil atípico (fora da distribuição de treino) — independe do
         # modelo escolhido e sempre usa os atributos padronizados. Sinaliza casos em
