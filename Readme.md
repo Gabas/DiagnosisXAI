@@ -313,6 +313,20 @@ As três últimas formam um **trio de confiabilidade** complementar:
 
 Para completar a explicabilidade, a aba **Sobre** traz um glossário dos 30 atributos: o que cada biomarcador mede, o significado das 3 estatísticas (`_mean`/`_se`/`_worst`) e — um ponto de honestidade científica — que a maioria **não tem unidade física** (são índices adimensionais ou medidas na escala de pixel da imagem, não em milímetros), além de serem padronizados por Z-score antes da predição. As mesmas descrições aparecem como *tooltip* ao passar o mouse sobre os cabeçalhos da tabela de resultados.
 
+### Relatórios de explicabilidade por modelo
+
+No **Passo 5**, cada modelo abre uma janela de explicabilidade própria — com o ranking global de biomarcadores, um gráfico e o detalhamento por paciente (exportável em PDF). Cada tela é adaptada à natureza do modelo:
+
+| Modelo | O que a tela mostra |
+|---|---|
+| **Árvore de Decisão** | **Ganho de informação (redução de entropia)** por biomarcador, com o valor `Δentropia` de cada um, e o caminho de regras da raiz à folha por paciente |
+| **Regressão Logística** | **Curva logística** σ(z): cada paciente é posicionado em (escore `z = w·x + b`, `P(Maligno) = σ(z)`). Ao selecionar um paciente, exibe a **função matemática da decisão** — o valor de `z`, a aplicação da sigmoide e a regra `z ≷ 0` |
+| **KNN** | Mapa de vizinhança 2D (PCA) destacando os *K* vizinhos que votaram, com **zoom/pan** |
+| **Random Forest** | Importância por permutação + a votação das árvores por paciente |
+| **SVM** | Mapa com os vetores de suporte em destaque + gráfico **interativo da margem**: a "rua" entre `z = −1` e `z = +1` que o SVM maximiza, com a fronteira em `z = 0` — torna a margem *visível* |
+
+Os gráficos embutidos têm **zoom/pan** (lupa). Além disso, o **Mapa Populacional (UMAP)** e a **margem do SVM** oferecem versões **interativas em Bokeh** (hover com os dados do paciente, zoom, legenda clicável) abertas no navegador. O **SHAP** complementa, atribuindo a cada biomarcador sua contribuição para a decisão de cada paciente.
+
 ---
 
 ## Cronograma
