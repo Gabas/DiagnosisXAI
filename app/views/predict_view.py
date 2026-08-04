@@ -12,6 +12,7 @@ from core.batch_processor import BatchProcessor
 from core.biomarkers import descricao_coluna
 from core.history_manager import HistoryManager
 from core.inference import ModelLoader
+from core.metrics import analise_critica, avaliar_modelos, ressalvas_do_lote
 from core.predictor import PredictorEngine
 from utils.ui import ScrollableFrame, bind_treeview_mousewheel, HeadingTooltip
 from utils.pdf_report import export_batch_report, resolve_reports_dir
@@ -61,6 +62,45 @@ class PredictView(ctk.CTkFrame):
     }
     _KEY_MODELO = {v: k for k, v in _MODELO_KEY.items()}
 
+    # Colunas da tabela de desempenho do Passo 4: (id, cabeçalho, largura em px).
+    # A matriz de confusão (VP/FN/FP/VN) fica à direita porque é a origem de todas
+    # as métricas — é ela que permite conferir os percentuais em casos pequenos.
+    _COLUNAS_METRICAS = [
+        ("modelo", "Modelo", 170),
+        ("acuracia", "Acurácia", 90),
+        ("sensibilidade", "Sensibilidade", 110),
+        ("especificidade", "Especificidade", 115),
+        ("precisao", "Precisão", 90),
+        ("f1", "F1", 80),
+        ("vp", "VP", 45),
+        ("fn", "FN", 45),
+        ("fp", "FP", 45),
+        ("vn", "VN", 45),
+    ]
+
+    # Definição de cada métrica, exibida como tooltip no cabeçalho da tabela.
+    _DESCRICAO_METRICA = {
+        "modelo": "Modelo de IA avaliado contra o gabarito deste lote.",
+        "acuracia": "Proporção de acertos no lote inteiro. Isolada, engana: num lote "
+                    "majoritariamente benigno, um modelo que nunca acusa malignidade já "
+                    "exibe acurácia alta.",
+        "sensibilidade": "Dos tumores realmente malignos, quantos o modelo detectou "
+                         "(revocação da classe Maligno). É a métrica crítica em rastreio: "
+                         "o que ela não pega vira falso negativo.",
+        "especificidade": "Dos tumores realmente benignos, quantos o modelo poupou de um "
+                          "alarme falso (revocação da classe Benigno).",
+        "precisao": "Dos pacientes que o modelo apontou como malignos, quantos eram de fato "
+                    "malignos (valor preditivo positivo). Depende da prevalência do lote.",
+        "f1": "Média harmônica entre precisão e sensibilidade — resumo único de quão bem o "
+              "modelo pega malignos sem alarmar benignos.",
+        "vp": "Verdadeiros positivos: malignos corretamente identificados.",
+        "fn": "Falsos negativos: malignos classificados como benignos. O erro mais caro — "
+              "o câncer passa sem qualquer sinal de alerta.",
+        "fp": "Falsos positivos: benignos classificados como malignos. Custa exames "
+              "adicionais e ansiedade, mas não deixa doença sem tratar.",
+        "vn": "Verdadeiros negativos: benignos corretamente identificados.",
+    }
+
     # Rótulos exibidos no menu de relatórios do Passo 5.
     _ROTULOS_RELATORIO = {
         'arvore': "Árvore de Decisão — regras",
@@ -99,6 +139,7 @@ class PredictView(ctk.CTkFrame):
 
         self._ultima_explicacao = {}
         self._ultima_acuracia = None
+        self._ultimas_metricas = {}
         self._report_windows = {}
         self._shap_disponiveis = []
         self._opcoes_relatorio = {}
@@ -162,13 +203,35 @@ class PredictView(ctk.CTkFrame):
         # --- Passo 4: Auditoria (Opcional) ---
         audit_frame = ctk.CTkFrame(container)
         audit_frame.grid(row=4, column=0, padx=20, pady=5, sticky="nsew")
+        audit_frame.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(audit_frame, text="Passo 4: Auditoria Acadêmica (Opcional)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=20, pady=(10, 5), sticky="w")
-        
+
         self.btn_audit = ctk.CTkButton(audit_frame, text="Carregar Gabarito (CSV)", state="disabled", command=self.run_audit, fg_color="#8e44ad", hover_color="#9b59b6")
         self.btn_audit.grid(row=1, column=0, padx=20, pady=10, sticky="w")
-        
+
         self.lbl_audit_results = ctk.CTkLabel(audit_frame, text="", justify="left", font=ctk.CTkFont(size=13, weight="bold"))
         self.lbl_audit_results.grid(row=1, column=1, padx=20, pady=10, sticky="w")
+
+        # Tabela de desempenho por modelo (acurácia, sensibilidade, especificidade,
+        # F1 e a matriz de confusão que os origina). Só aparece após a auditoria.
+        self.tree_metricas = ttk.Treeview(
+            audit_frame, columns=[c for c, _, _ in self._COLUNAS_METRICAS],
+            show="headings", height=1)
+        for coluna, titulo, largura in self._COLUNAS_METRICAS:
+            self.tree_metricas.heading(coluna, text=titulo)
+            self.tree_metricas.column(coluna, width=largura, anchor="center", stretch=False)
+        self.tree_metricas.column("modelo", anchor="w")
+        self.tree_metricas.grid(row=2, column=0, columnspan=2, padx=20, pady=(0, 8), sticky="ew")
+        self.tree_metricas.grid_remove()
+        # Tooltip nos cabeçalhos: a definição de cada métrica ao passar o mouse.
+        self._metricas_tooltip = HeadingTooltip(self.tree_metricas, self._DESCRICAO_METRICA.get)
+
+        # Leitura crítica por modelo: pontos fortes, ressalvas e veredito.
+        self.txt_audit_critica = ctk.CTkTextbox(
+            audit_frame, wrap="word", height=300, activate_scrollbars=True,
+            font=ctk.CTkFont(size=12))
+        self.txt_audit_critica.grid(row=3, column=0, columnspan=2, padx=20, pady=(0, 12), sticky="ew")
+        self.txt_audit_critica.grid_remove()
 
         # --- Passo 5: Explicabilidade (XAI) ---
         xai_frame = ctk.CTkFrame(container)
@@ -273,8 +336,7 @@ class PredictView(ctk.CTkFrame):
             self.btn_run.configure(state="disabled")
             self.lbl_run_error.configure(text="")
             self.btn_audit.configure(state="disabled")
-            self.lbl_audit_results.configure(text="")
-            self._ultima_acuracia = None
+            self._limpar_auditoria()
             self.btn_export_csv.configure(state="disabled")
             self.btn_export_pdf.configure(state="disabled")
             self.lbl_export_hint.configure(
@@ -316,8 +378,7 @@ class PredictView(ctk.CTkFrame):
 
                 # Libera o Passo 4 após a IA rodar
                 self.btn_audit.configure(state="normal")
-                self.lbl_audit_results.configure(text="")
-                self._ultima_acuracia = None
+                self._limpar_auditoria()
 
                 # Libera o Passo 6 (exportação) após a IA rodar
                 self.btn_export_csv.configure(state="normal")
@@ -754,8 +815,8 @@ class PredictView(ctk.CTkFrame):
         return pacientes
 
     def run_audit(self):
-        
-        """Abre o CSV com diagnósticos reais, adiciona à tabela e calcula a acurácia."""
+
+        """Abre o CSV com diagnósticos reais, adiciona à tabela e avalia os modelos."""
         filetypes = (('Arquivos CSV', '*.csv'), ('Todos os arquivos', '*.*'))
         filename = filedialog.askopenfilename(title='Selecione o arquivo Gabarito', initialdir=self._diretorio_inicial(), filetypes=filetypes)
 
@@ -784,33 +845,125 @@ class PredictView(ctk.CTkFrame):
                 # 1. Traduz a coluna diagnosis para texto e adiciona ao DataFrame de resultado
                 gabarito_text = ['Maligno' if val == 1 else 'Benigno' for val in df_gabarito['diagnosis']]
                 self.df_resultado['Diagnóstico_Real'] = gabarito_text
-                
+
                 # 2. Atualiza a tabela na tela para mostrar a nova coluna "Diagnóstico_Real"
                 self._update_treeview_with_data(self.df_resultado)
 
-                # 3. Calcula a acurácia por modelo
-                acuracia = {}
-                colunas_ia = [col for col in self.df_resultado.columns if col.startswith('IA_')]
+                # 3. Avalia cada modelo contra o gabarito (matriz de confusão e derivadas)
+                metricas = avaliar_modelos(
+                    self.df_resultado, nome_modelo=self.model_selector.get())
+                if not metricas:
+                    self.lbl_audit_results.configure(
+                        text="Erro: o lote não tem coluna de diagnóstico para auditar.",
+                        text_color="#e74c3c")
+                    return
 
-                if colunas_ia:
-                    for col in colunas_ia:
-                        acertos = (self.df_resultado[col] == self.df_resultado['Diagnóstico_Real']).sum()
-                        acuracia[col.replace('IA_', '')] = round((acertos / len(gabarito_text)) * 100, 2)
-                else:
-                    acertos = (self.df_resultado['Diagnóstico_IA'] == self.df_resultado['Diagnóstico_Real']).sum()
-                    acuracia['Modelo Selecionado'] = round((acertos / len(gabarito_text)) * 100, 2)
+                self._ultimas_metricas = metricas
+                self._preencher_tabela_metricas(metricas)
+                self._preencher_critica(metricas)
 
-                resultados_texto = "Acurácia no Lote:\n" + "\n".join(
-                    f"   • {k}: {v:.2f}%" for k, v in acuracia.items()
-                )
-                self.lbl_audit_results.configure(text=resultados_texto, text_color="#2ecc71")
+                # A composição do lote é a mesma para todos os modelos — basta um.
+                resumo = metricas[next(iter(metricas))]
+                self.lbl_audit_results.configure(
+                    text=(f"Gabarito conferido: {resumo['n']} pacientes "
+                          f"({resumo['vp'] + resumo['fn']} malignos, "
+                          f"{resumo['vn'] + resumo['fp']} benignos)."),
+                    text_color="#2ecc71")
+
+                # A acurácia (só ela) segue para o histórico e o PDF, cujo formato
+                # é {modelo: percentual} — as demais métricas ficam nesta tela.
+                acuracia = {nome: round(m['acuracia'], 2) for nome, m in metricas.items()}
                 self._ultima_acuracia = acuracia
-
-                # Atualiza a acurácia na entrada mais recente do histórico
                 self._history_manager.update_last_accuracy(acuracia)
 
             except Exception as e:
                 self.lbl_audit_results.configure(text=f"Erro na auditoria: {e}", text_color="#e74c3c")
+
+    def _preencher_tabela_metricas(self, metricas_por_modelo: dict):
+        """
+        Preenche e exibe a tabela de desempenho do Passo 4.
+
+        Parameters
+        ----------
+        metricas_por_modelo : dict
+            Saída de ``core.metrics.avaliar_modelos`` — já ordenada da maior
+            para a menor sensibilidade.
+        """
+        self.tree_metricas.delete(*self.tree_metricas.get_children())
+
+        for nome, m in metricas_por_modelo.items():
+            self.tree_metricas.insert("", "end", values=(
+                nome,
+                self._pct(m['acuracia']), self._pct(m['sensibilidade']),
+                self._pct(m['especificidade']), self._pct(m['precisao']), self._pct(m['f1']),
+                m['vp'], m['fn'], m['fp'], m['vn'],
+            ))
+
+        self.tree_metricas.configure(height=max(len(metricas_por_modelo), 1))
+        self.tree_metricas.grid()
+
+    @staticmethod
+    def _pct(valor) -> str:
+        """Formata uma proporção percentual, marcando as indefinidas com '—'."""
+        return "—" if valor is None else f"{valor:.1f}%"
+
+    def _preencher_critica(self, metricas_por_modelo: dict):
+        """
+        Escreve a leitura crítica de cada modelo na caixa de texto do Passo 4.
+
+        Para cada modelo: pontos fortes (do algoritmo e do que ele fez neste
+        lote), ressalvas (erros cometidos, assimetria entre os dois tipos de
+        erro, incerteza amostral) e um veredito de uso. Ao final, as ressalvas
+        metodológicas que valem para a auditoria inteira.
+
+        Parameters
+        ----------
+        metricas_por_modelo : dict
+            Saída de ``core.metrics.avaliar_modelos``.
+        """
+        linhas = []
+        for nome, m in metricas_por_modelo.items():
+            critica = analise_critica(nome, m, metricas_por_modelo)
+            linhas.append(f"■ {nome}")
+            linhas.append(f"   acurácia {self._pct(m['acuracia'])}"
+                          f"  ·  sensibilidade {self._pct(m['sensibilidade'])}"
+                          f"  ·  especificidade {self._pct(m['especificidade'])}"
+                          f"  ·  F1 {self._pct(m['f1'])}")
+            if m['ic_sensibilidade']:
+                linhas.append(f"   IC 95% da sensibilidade: "
+                              f"[{m['ic_sensibilidade'][0]:.1f}%, {m['ic_sensibilidade'][1]:.1f}%]"
+                              f"  ·  da especificidade: "
+                              f"[{m['ic_especificidade'][0]:.1f}%, {m['ic_especificidade'][1]:.1f}%]")
+
+            linhas.append("   Pontos fortes:")
+            linhas.extend(f"      • {t}" for t in critica['fortes'])
+            linhas.append("   Ressalvas:")
+            linhas.extend(f"      • {t}" for t in critica['ressalvas'])
+            linhas.append(f"   Veredito: {critica['veredito']}")
+            linhas.append("")
+
+        ressalvas = ressalvas_do_lote(metricas_por_modelo)
+        if ressalvas:
+            linhas.append("■ Limites desta auditoria")
+            linhas.extend(f"      • {t}" for t in ressalvas)
+
+        self.txt_audit_critica.configure(state="normal")
+        self.txt_audit_critica.delete("1.0", "end")
+        self.txt_audit_critica.insert("1.0", "\n".join(linhas))
+        self.txt_audit_critica.configure(state="disabled")
+        self.txt_audit_critica.grid()
+
+    def _limpar_auditoria(self):
+        """Esconde a tabela e a leitura crítica, zerando o estado do Passo 4."""
+        self._ultima_acuracia = None
+        self._ultimas_metricas = {}
+        self.lbl_audit_results.configure(text="")
+        self.tree_metricas.delete(*self.tree_metricas.get_children())
+        self.tree_metricas.grid_remove()
+        self.txt_audit_critica.configure(state="normal")
+        self.txt_audit_critica.delete("1.0", "end")
+        self.txt_audit_critica.configure(state="disabled")
+        self.txt_audit_critica.grid_remove()
 
     @staticmethod
     def _formatar_importancias(tipo: str, dados: dict) -> list:
