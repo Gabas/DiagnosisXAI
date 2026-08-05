@@ -8,7 +8,8 @@ e o detalhamento do raciocínio aplicado a cada paciente do lote.
 import customtkinter as ctk
 from tkinter import ttk
 
-from utils.ui import bind_treeview_mousewheel, responsive_geometry
+from utils.ui import (ScrollableFrame, ajustar_ao_conteudo, bind_treeview_mousewheel,
+                      itens_visiveis, responsive_geometry)
 from views.report_common import PatientPDFExportMixin
 
 
@@ -50,22 +51,31 @@ class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         self.title("Relatório de Explicabilidade — Árvore de Decisão")
         responsive_geometry(self, 980, 740)
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(2, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        # Todo o conteúdo vive num corpo rolável: o layout pede mais altura do
+        # que cabe num notebook, e sem rolagem a parte de baixo ficava
+        # inacessível, não apenas apertada.
+        self._corpo = ScrollableFrame(self, fg_color="transparent")
+        self._corpo.grid(row=0, column=0, sticky="nsew")
+        self._corpo.grid_columnconfigure(0, weight=1)
 
         self._explicacoes = explicacoes
         self._por_indice = {str(e['indice']): e for e in explicacoes}
+        self._linhas_lista = itens_visiveis(self, 12, minimo=6)
 
         self._build_header()
         self._build_global(importancias)
         self._build_per_patient(explicacoes)
 
+        ajustar_ao_conteudo(self, self._corpo)
         # Garante que a janela surja à frente da principal.
         self.after(150, self.lift)
         self.after(200, self.focus)
 
     def _build_header(self):
         """Constrói o cabeçalho com o resumo do lote diagnosticado."""
-        header = ctk.CTkFrame(self, fg_color="transparent")
+        header = ctk.CTkFrame(self._corpo, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=20, pady=(20, 6))
 
         ctk.CTkLabel(
@@ -92,7 +102,7 @@ class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         importancias : list[tuple[str, float]]
             Pares (característica, importância) ordenados do maior para o menor.
         """
-        frame = ctk.CTkFrame(self)
+        frame = ctk.CTkFrame(self._corpo)
         frame.grid(row=1, column=0, sticky="ew", padx=20, pady=10)
         frame.grid_columnconfigure(1, weight=1)
 
@@ -121,6 +131,7 @@ class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             ganho = item[2] if len(item) > 2 else None
             return nome, share, ganho
 
+        importancias = importancias[:itens_visiveis(self, 10)]
         maior = _desempacota(importancias[0])[1] or 1.0
         for i, item in enumerate(importancias, start=2):
             nome, share, ganho = _desempacota(item)
@@ -151,7 +162,7 @@ class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         explicacoes : list[dict]
             Explicações por paciente a serem listadas e detalhadas.
         """
-        container = ctk.CTkFrame(self, fg_color="transparent")
+        container = ctk.CTkFrame(self._corpo, fg_color="transparent")
         container.grid(row=2, column=0, sticky="nsew", padx=20, pady=(0, 16))
         container.grid_columnconfigure(0, weight=3)
         container.grid_columnconfigure(1, weight=4)
@@ -176,7 +187,8 @@ class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         tree_frame.grid_rowconfigure(0, weight=1)
 
         colunas = ("paciente", "diagnostico", "fatores")
-        self._tree = ttk.Treeview(tree_frame, columns=colunas, show="headings")
+        self._tree = ttk.Treeview(tree_frame, columns=colunas, show="headings",
+                                  height=self._linhas_lista)
         self._tree.heading("paciente", text="Paciente")
         self._tree.heading("diagnostico", text="Diagnóstico")
         self._tree.heading("fatores", text="Principais fatores")
@@ -203,7 +215,7 @@ class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
 
         self._detalhe = ctk.CTkTextbox(
-            container, wrap="word",
+            container, wrap="word", height=self._linhas_lista * 26,
             font=ctk.CTkFont(family="Courier New", size=13),
         )
         self._detalhe.grid(row=1, column=1, sticky="nsew")

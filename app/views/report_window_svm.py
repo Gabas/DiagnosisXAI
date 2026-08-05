@@ -22,7 +22,9 @@ matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from utils.ui import adicionar_barra_zoom, bind_treeview_mousewheel, responsive_geometry
+from utils.ui import (ScrollableFrame, adicionar_barra_zoom, ajustar_ao_conteudo,
+                      bind_treeview_mousewheel, figura_responsiva, itens_visiveis,
+                      responsive_geometry)
 from views.report_common import PatientPDFExportMixin
 
 
@@ -78,8 +80,16 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         self.title("Relatório de Explicabilidade — SVM")
         responsive_geometry(self, 1060, 860)
         self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(2, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        # Todo o conteúdo vive num corpo rolável: o layout (cabeçalho + painéis
+        # + mestre-detalhe) pede mais altura do que cabe num notebook, e sem
+        # rolagem a parte de baixo ficava inacessível, não apenas apertada.
+        self._corpo = ScrollableFrame(self, fg_color="transparent")
+        self._corpo.grid(row=0, column=0, sticky="nsew")
+        self._corpo.grid_columnconfigure(0, weight=1)
+        self._corpo.grid_columnconfigure(1, weight=1)
+        self._linhas_lista = itens_visiveis(self, 10, minimo=6)
 
         self._explicacoes = explicacoes
         self._por_indice = {str(e['indice']): e for e in explicacoes}
@@ -100,12 +110,13 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         self._build_plot()
         self._build_per_patient(explicacoes)
 
+        ajustar_ao_conteudo(self, self._corpo)
         self.after(150, self.lift)
         self.after(200, self.focus)
 
     def _build_header(self):
         """Constrói o cabeçalho com o resumo do lote e dos vetores de suporte."""
-        header = ctk.CTkFrame(self, fg_color="transparent")
+        header = ctk.CTkFrame(self._corpo, fg_color="transparent")
         header.grid(row=0, column=0, columnspan=2, sticky="ew", padx=20, pady=(20, 6))
 
         ctk.CTkLabel(
@@ -136,7 +147,7 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         importancias : list[tuple[str, float]]
             Pares (característica, importância) ordenados do maior para o menor.
         """
-        frame = ctk.CTkFrame(self)
+        frame = ctk.CTkFrame(self._corpo)
         frame.grid(row=1, column=0, sticky="nsew", padx=(20, 10), pady=10)
         frame.grid_columnconfigure(1, weight=1)
 
@@ -154,6 +165,7 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
                 row=2, column=0, sticky="w", padx=16, pady=(0, 12))
             return
 
+        importancias = importancias[:itens_visiveis(self, 10)]
         maior = max(v for _, v in importancias) or 1.0
         for i, (nome, imp) in enumerate(importancias, start=2):
             ctk.CTkLabel(
@@ -174,7 +186,7 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
 
     def _build_plot(self):
         """Constrói o mapa populacional (UMAP) com os vetores de suporte em destaque."""
-        frame = ctk.CTkFrame(self)
+        frame = ctk.CTkFrame(self._corpo)
         frame.grid(row=1, column=1, sticky="nsew", padx=(10, 20), pady=10)
         frame.grid_columnconfigure(0, weight=1)
         frame.grid_rowconfigure(1, weight=1)
@@ -184,7 +196,7 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             font=ctk.CTkFont(size=15, weight="bold"),
         ).grid(row=0, column=0, sticky="w", padx=16, pady=(12, 4))
 
-        fig = Figure(figsize=(5.0, 4.2), dpi=100)
+        fig = Figure(figsize=figura_responsiva(self, 5.0, 3.8), dpi=100)
         fig.patch.set_facecolor(self.COR_FUNDO)
         ax = fig.add_subplot(111)
         ax.set_facecolor(self.COR_FUNDO)
@@ -276,7 +288,7 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         explicacoes : list[dict]
             Explicações por paciente a serem listadas e detalhadas.
         """
-        container = ctk.CTkFrame(self, fg_color="transparent")
+        container = ctk.CTkFrame(self._corpo, fg_color="transparent")
         container.grid(row=2, column=0, columnspan=2, sticky="nsew", padx=20, pady=(0, 16))
         container.grid_columnconfigure(0, weight=3)
         container.grid_columnconfigure(1, weight=4)
@@ -301,7 +313,8 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         tree_frame.grid_rowconfigure(0, weight=1)
 
         colunas = ("paciente", "diagnostico", "confianca", "margem")
-        self._tree = ttk.Treeview(tree_frame, columns=colunas, show="headings")
+        self._tree = ttk.Treeview(tree_frame, columns=colunas, show="headings",
+                                  height=self._linhas_lista)
         self._tree.heading("paciente", text="Paciente")
         self._tree.heading("diagnostico", text="Diagnóstico")
         self._tree.heading("confianca", text="Confiança")
@@ -332,7 +345,7 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
 
         self._detalhe = ctk.CTkTextbox(
-            container, wrap="word",
+            container, wrap="word", height=self._linhas_lista * 26,
             font=ctk.CTkFont(family="Courier New", size=13),
         )
         self._detalhe.grid(row=1, column=1, sticky="nsew")

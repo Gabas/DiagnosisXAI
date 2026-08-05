@@ -10,7 +10,7 @@ from core.biomarkers import (
     GLOSSARIO_SUBTITULO,
     GLOSSARIO_UNIDADES,
 )
-from utils.ui import ScrollableFrame
+from utils.ui import ScrollableFrame, quebra_automatica
 from views.info_window import InfoWindow
 
 
@@ -260,11 +260,11 @@ class AboutView(ctk.CTkFrame):
                 header, text=f"  —  {nome_completo}",
                 font=ctk.CTkFont(size=12), text_color="gray"
             ).pack(side="left")
-            ctk.CTkLabel(
+            quebra_automatica(ctk.CTkLabel(
                 item, text=descricao,
                 font=ctk.CTkFont(size=12), text_color="gray",
                 anchor="w", justify="left", wraplength=820
-            ).pack(anchor="w", padx=12, pady=(0, 4))
+            )).pack(anchor="w", fill="x", padx=12, pady=(0, 4))
             ctk.CTkLabel(
                 item, text="Ver detalhes  ›",
                 font=ctk.CTkFont(size=11, weight="bold"), text_color="#3498db", anchor="w"
@@ -302,10 +302,10 @@ class AboutView(ctk.CTkFrame):
         ).pack(anchor="w", padx=20, pady=(0, 8))
 
         # Introdução
-        ctk.CTkLabel(
+        quebra_automatica(ctk.CTkLabel(
             card, text=GLOSSARIO_INTRO, font=ctk.CTkFont(size=12),
             anchor="w", justify="left", wraplength=900,
-        ).pack(anchor="w", fill="x", padx=20, pady=(0, 10))
+        )).pack(anchor="w", fill="x", padx=20, pady=(0, 10))
 
         # Nota destacada sobre unidades de medida
         nota = ctk.CTkFrame(card, fg_color=("gray85", "gray20"), corner_radius=6)
@@ -314,10 +314,10 @@ class AboutView(ctk.CTkFrame):
             nota, text="ⓘ  Unidades de medida",
             font=ctk.CTkFont(size=12, weight="bold"), text_color="#3498db", anchor="w",
         ).pack(anchor="w", padx=12, pady=(10, 2))
-        ctk.CTkLabel(
+        quebra_automatica(ctk.CTkLabel(
             nota, text=GLOSSARIO_UNIDADES, font=ctk.CTkFont(size=12),
             text_color=("gray20", "gray85"), anchor="w", justify="left", wraplength=880,
-        ).pack(anchor="w", fill="x", padx=12, pady=(0, 10))
+        )).pack(anchor="w", fill="x", padx=12, pady=(0, 10))
 
         # As 3 estatísticas (sufixos _mean/_se/_worst)
         ctk.CTkLabel(
@@ -331,10 +331,10 @@ class AboutView(ctk.CTkFrame):
                 linha, text=f"{rotulo}  (_{sufixo})",
                 font=ctk.CTkFont(size=12, weight="bold"), width=150, anchor="w",
             ).pack(side="left")
-            ctk.CTkLabel(
+            quebra_automatica(ctk.CTkLabel(
                 linha, text=expl, font=ctk.CTkFont(size=12),
                 text_color=("gray25", "gray80"), anchor="w", justify="left", wraplength=730,
-            ).pack(side="left", padx=(8, 0))
+            ), margem=10, minimo=220).pack(side="left", fill="x", expand=True, padx=(8, 0))
 
         # Tabela alinhada dos 10 biomarcadores-base
         ctk.CTkLabel(
@@ -342,11 +342,14 @@ class AboutView(ctk.CTkFrame):
             font=ctk.CTkFont(size=13, weight="bold"), anchor="w",
         ).pack(anchor="w", padx=20, pady=(12, 4))
 
+        # A coluna do meio é a que cede espaço quando a janela estreita; as
+        # laterais têm largura mínima só para o rótulo e a unidade não
+        # quebrarem em todas as linhas.
         tabela = ctk.CTkFrame(card, fg_color="transparent")
         tabela.pack(fill="x", padx=20, pady=(0, 18))
-        tabela.grid_columnconfigure(0, weight=0, minsize=140)
+        tabela.grid_columnconfigure(0, weight=0, minsize=130)
         tabela.grid_columnconfigure(1, weight=1)
-        tabela.grid_columnconfigure(2, weight=0, minsize=180)
+        tabela.grid_columnconfigure(2, weight=0, minsize=150)
 
         cabecalhos = ("Biomarcador", "O que mede", "Unidade")
         for c, titulo in enumerate(cabecalhos):
@@ -361,14 +364,16 @@ class AboutView(ctk.CTkFrame):
                 tabela, text=rotulo, font=ctk.CTkFont(size=12, weight="bold"),
                 anchor="w", fg_color=bg,
             ).grid(row=i, column=0, sticky="nsew", padx=1, pady=1, ipadx=8, ipady=6)
-            ctk.CTkLabel(
+            quebra_automatica(ctk.CTkLabel(
                 tabela, text=mede[0].upper() + mede[1:], font=ctk.CTkFont(size=12),
                 anchor="w", justify="left", wraplength=430, fg_color=bg,
-            ).grid(row=i, column=1, sticky="nsew", padx=1, pady=1, ipadx=8, ipady=6)
-            ctk.CTkLabel(
+            ), margem=20, minimo=180).grid(
+                row=i, column=1, sticky="nsew", padx=1, pady=1, ipadx=8, ipady=6)
+            quebra_automatica(ctk.CTkLabel(
                 tabela, text=unidade, font=ctk.CTkFont(size=12), text_color=("gray30", "gray70"),
                 anchor="w", justify="left", wraplength=170, fg_color=bg,
-            ).grid(row=i, column=2, sticky="nsew", padx=1, pady=1, ipadx=8, ipady=6)
+            ), margem=20, minimo=120).grid(
+                row=i, column=2, sticky="nsew", padx=1, pady=1, ipadx=8, ipady=6)
 
     def _tornar_clicavel(self, item, chave: str):
         """

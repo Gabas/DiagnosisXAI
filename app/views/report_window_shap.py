@@ -17,7 +17,8 @@ matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from utils.ui import bind_treeview_mousewheel, responsive_geometry
+from utils.ui import (ScrollableFrame, ajustar_ao_conteudo, bind_treeview_mousewheel,
+                      figura_responsiva, itens_visiveis, responsive_geometry)
 
 
 class ShapReportWindow(ctk.CTkToplevel):
@@ -68,8 +69,16 @@ class ShapReportWindow(ctk.CTkToplevel):
         self.title(f"Relatório SHAP — {titulo}")
         responsive_geometry(self, 1040, 820)
         self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(2, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        # Todo o conteúdo vive num corpo rolável: o layout pede mais altura do
+        # que cabe num notebook, e sem rolagem a parte de baixo ficava
+        # inacessível, não apenas apertada.
+        self._corpo = ScrollableFrame(self, fg_color="transparent")
+        self._corpo.grid(row=0, column=0, sticky="nsew")
+        self._corpo.grid_columnconfigure(0, weight=1)
+        self._corpo.grid_columnconfigure(1, weight=1)
+        self._linhas_lista = itens_visiveis(self, 12, minimo=6)
 
         self._explainer = explainer
         self._X = np.asarray(X_scaled, dtype=float)
@@ -82,6 +91,7 @@ class ShapReportWindow(ctk.CTkToplevel):
         self._build_lista()
         self._build_detalhe()
 
+        ajustar_ao_conteudo(self, self._corpo)
         self.after(150, self.lift)
         self.after(200, self.focus)
 
@@ -91,7 +101,7 @@ class ShapReportWindow(ctk.CTkToplevel):
 
     def _build_header(self):
         """Constrói o cabeçalho com o resumo do lote."""
-        header = ctk.CTkFrame(self, fg_color="transparent")
+        header = ctk.CTkFrame(self._corpo, fg_color="transparent")
         header.grid(row=0, column=0, columnspan=2, sticky="ew", padx=20, pady=(20, 6))
 
         ctk.CTkLabel(
@@ -118,7 +128,7 @@ class ShapReportWindow(ctk.CTkToplevel):
         importancias : list[tuple[str, float]]
             Pares (característica, importância) ordenados do maior para o menor.
         """
-        frame = ctk.CTkFrame(self)
+        frame = ctk.CTkFrame(self._corpo)
         frame.grid(row=1, column=0, sticky="nsew", padx=(20, 10), pady=10)
         frame.grid_columnconfigure(1, weight=1)
 
@@ -131,7 +141,7 @@ class ShapReportWindow(ctk.CTkToplevel):
             font=ctk.CTkFont(size=11), text_color="gray",
         ).grid(row=1, column=0, columnspan=3, sticky="w", padx=16, pady=(0, 8))
 
-        importancias = importancias[:10]
+        importancias = importancias[:itens_visiveis(self, 10)]
         if not importancias:
             ctk.CTkLabel(frame, text="Sem informação disponível.", text_color="gray").grid(
                 row=2, column=0, sticky="w", padx=16, pady=(0, 12))
@@ -155,7 +165,7 @@ class ShapReportWindow(ctk.CTkToplevel):
 
     def _build_lista(self):
         """Constrói a lista de pacientes (seleciona qual explicar)."""
-        frame = ctk.CTkFrame(self)
+        frame = ctk.CTkFrame(self._corpo)
         frame.grid(row=1, column=1, sticky="nsew", padx=(10, 20), pady=10)
         frame.grid_columnconfigure(0, weight=1)
         frame.grid_rowconfigure(1, weight=1)
@@ -172,7 +182,7 @@ class ShapReportWindow(ctk.CTkToplevel):
         tree_frame.grid_rowconfigure(0, weight=1)
 
         self._tree = ttk.Treeview(tree_frame, columns=("paciente", "diagnostico"),
-                                  show="headings")
+                                  show="headings", height=self._linhas_lista)
         self._tree.heading("paciente", text="Paciente")
         self._tree.heading("diagnostico", text="Diagnóstico")
         self._tree.column("paciente", width=90, anchor="center")
@@ -193,7 +203,7 @@ class ShapReportWindow(ctk.CTkToplevel):
 
     def _build_detalhe(self):
         """Constrói a área do gráfico de cascata (waterfall) por paciente."""
-        frame = ctk.CTkFrame(self)
+        frame = ctk.CTkFrame(self._corpo)
         frame.grid(row=2, column=0, columnspan=2, sticky="nsew", padx=20, pady=(0, 16))
         frame.grid_columnconfigure(0, weight=1)
         frame.grid_rowconfigure(1, weight=1)
@@ -204,7 +214,7 @@ class ShapReportWindow(ctk.CTkToplevel):
         )
         self._lbl_detalhe.grid(row=0, column=0, sticky="w", padx=16, pady=(12, 4))
 
-        fig = Figure(figsize=(9, 3.4), dpi=100)
+        fig = Figure(figsize=figura_responsiva(self, 9, 3.4), dpi=100)
         fig.patch.set_facecolor(self.COR_FUNDO)
         self._ax = fig.add_subplot(111)
         self._ax.set_facecolor(self.COR_FUNDO)

@@ -19,7 +19,8 @@ matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from utils.ui import bind_treeview_mousewheel, responsive_geometry
+from utils.ui import (ScrollableFrame, ajustar_ao_conteudo, bind_treeview_mousewheel,
+                      figura_responsiva, itens_visiveis, responsive_geometry)
 
 
 class UmapMapWindow(ctk.CTkToplevel):
@@ -62,9 +63,17 @@ class UmapMapWindow(ctk.CTkToplevel):
         super().__init__(master, **kwargs)
         self.title("Mapa Populacional — UMAP")
         responsive_geometry(self, 980, 760)
-        self.grid_columnconfigure(0, weight=3)
-        self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(1, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        # Todo o conteúdo vive num corpo rolável: o mapa mais a lista pedem mais
+        # altura do que cabe num notebook, e sem rolagem a parte de baixo ficava
+        # inacessível, não apenas apertada.
+        self._corpo = ScrollableFrame(self, fg_color="transparent")
+        self._corpo.grid(row=0, column=0, sticky="nsew")
+        self._corpo.grid_columnconfigure(0, weight=3)
+        self._corpo.grid_columnconfigure(1, weight=1)
+        self._linhas_lista = itens_visiveis(self, 16, minimo=8)
 
         self._train_2d = np.asarray(train_2d, dtype=float)
         self._train_y = np.asarray(train_y)
@@ -76,12 +85,13 @@ class UmapMapWindow(ctk.CTkToplevel):
         self._build_plot()
         self._build_lista()
 
+        ajustar_ao_conteudo(self, self._corpo)
         self.after(150, self.lift)
         self.after(200, self.focus)
 
     def _build_header(self):
         """Constrói o cabeçalho com o resumo do lote."""
-        header = ctk.CTkFrame(self, fg_color="transparent")
+        header = ctk.CTkFrame(self._corpo, fg_color="transparent")
         header.grid(row=0, column=0, columnspan=2, sticky="ew", padx=20, pady=(20, 6))
         ctk.CTkLabel(
             header, text="Mapa Populacional (UMAP)",
@@ -109,12 +119,12 @@ class UmapMapWindow(ctk.CTkToplevel):
 
     def _build_plot(self):
         """Constrói o mapa UMAP (treino ao fundo + pacientes do lote)."""
-        frame = ctk.CTkFrame(self)
+        frame = ctk.CTkFrame(self._corpo)
         frame.grid(row=1, column=0, sticky="nsew", padx=(20, 10), pady=(0, 16))
         frame.grid_columnconfigure(0, weight=1)
         frame.grid_rowconfigure(0, weight=1)
 
-        fig = Figure(figsize=(6.2, 5.4), dpi=100)
+        fig = Figure(figsize=figura_responsiva(self, 6.2, 5.4), dpi=100)
         fig.patch.set_facecolor(self.COR_FUNDO)
         self._ax = fig.add_subplot(111)
         self._ax.set_facecolor(self.COR_FUNDO)
@@ -163,7 +173,7 @@ class UmapMapWindow(ctk.CTkToplevel):
 
     def _build_lista(self):
         """Constrói a lista de pacientes (para destacar um no mapa)."""
-        frame = ctk.CTkFrame(self)
+        frame = ctk.CTkFrame(self._corpo)
         frame.grid(row=1, column=1, sticky="nsew", padx=(10, 20), pady=(0, 16))
         frame.grid_columnconfigure(0, weight=1)
         frame.grid_rowconfigure(1, weight=1)
@@ -180,7 +190,7 @@ class UmapMapWindow(ctk.CTkToplevel):
         tree_frame.grid_rowconfigure(0, weight=1)
 
         self._tree = ttk.Treeview(tree_frame, columns=("paciente", "diagnostico"),
-                                  show="headings")
+                                  show="headings", height=self._linhas_lista)
         self._tree.heading("paciente", text="Paciente")
         self._tree.heading("diagnostico", text="Diagnóstico")
         self._tree.column("paciente", width=80, anchor="center")

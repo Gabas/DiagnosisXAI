@@ -91,6 +91,178 @@ def responsive_geometry(window, width: int, height: int, margin: float = 0.9,
     window.minsize(min(min_width, largura), min(min_height, altura))
 
 
+# Altura de tela para a qual o layout dos relatórios foi desenhado. Serve de
+# referência para encolher figuras, listas e tabelas em telas menores — não é um
+# mínimo: telas maiores simplesmente não recebem ampliação.
+ALTURA_REFERENCIA = 1200
+
+# Piso do encolhimento: abaixo disso os gráficos ficariam ilegíveis, e é a
+# rolagem (não a redução) que passa a garantir o acesso ao conteúdo.
+FATOR_MINIMO = 0.6
+
+
+def fator_tela(window, altura_tela: int = None) -> float:
+    """
+    Quanto o conteúdo desta janela deve encolher para caber na tela atual.
+
+    Parameters
+    ----------
+    window : tkinter widget
+        Qualquer widget da janela (usado só para consultar a tela).
+    altura_tela : int ou None, optional
+        Altura da tela em pixels. Informe apenas em testes; em uso normal é
+        lida do próprio sistema.
+
+    Returns
+    -------
+    float
+        Fator entre ``FATOR_MINIMO`` e 1.0.
+    """
+    altura = altura_tela or window.winfo_screenheight()
+    return max(FATOR_MINIMO, min(1.0, altura / ALTURA_REFERENCIA))
+
+
+def figura_responsiva(window, largura: float, altura: float,
+                      altura_tela: int = None) -> tuple:
+    """
+    Adapta o ``figsize`` de um gráfico matplotlib à tela.
+
+    Uma figura tem tamanho fixo em polegadas: num notebook de 768px de altura,
+    os 4,2 polegadas (420px) usados no projeto consomem sozinhos mais de metade
+    da janela e empurram a área mestre-detalhe para fora dela.
+
+    Parameters
+    ----------
+    window : tkinter widget
+        Janela que hospedará o gráfico.
+    largura, altura : float
+        Tamanho ideal em polegadas (o que funciona bem em tela grande).
+    altura_tela : int ou None, optional
+        Apenas para testes.
+
+    Returns
+    -------
+    tuple[float, float]
+        ``figsize`` já reduzido. A largura encolhe menos que a altura: a falta
+        de espaço é sobretudo vertical, e achatar a largura prejudicaria os
+        rótulos do eixo x.
+    """
+    fator = fator_tela(window, altura_tela)
+    return (largura * (1.0 + fator) / 2, altura * fator)
+
+
+def itens_visiveis(window, padrao: int, minimo: int = 5,
+                   altura_tela: int = None) -> int:
+    """
+    Quantos itens de uma lista vertical (ex.: barras de importância) exibir.
+
+    Parameters
+    ----------
+    window : tkinter widget
+        Janela que hospedará a lista.
+    padrao : int
+        Quantidade ideal, usada em telas grandes.
+    minimo : int, optional
+        Piso — abaixo disso o ranking deixaria de ser informativo.
+    altura_tela : int ou None, optional
+        Apenas para testes.
+
+    Returns
+    -------
+    int
+        Quantidade a exibir nesta tela.
+    """
+    return max(minimo, round(padrao * fator_tela(window, altura_tela)))
+
+
+def ajustar_ao_conteudo(window, conteudo=None, min_width: int = 480,
+                        min_height: int = 400, margem: int = 24):
+    """
+    Redimensiona a janela para o tamanho que o conteúdo realmente pede.
+
+    Complementa :func:`responsive_geometry`, que só conhece um tamanho "ideal"
+    fixado no código — e que pode ficar aquém do conteúdo real (o relatório do
+    SVM, por exemplo, pedia 1084px de largura numa janela aberta com 1060, e a
+    diferença era simplesmente cortada). Aqui o tamanho pedido é medido depois
+    de construída a interface e continua limitado pela tela; o que exceder fica
+    acessível pela rolagem.
+
+    Chame depois de montar todo o conteúdo.
+
+    Parameters
+    ----------
+    window : ctk.CTk ou ctk.CTkToplevel
+        Janela a ajustar.
+    conteudo : tkinter widget ou None, optional
+        Widget a medir. Informe o corpo rolável quando houver um: uma área de
+        rolagem anuncia o tamanho *dela*, não o do que carrega dentro, e medir
+        a janela devolveria algo como 223x212 em vez do conteúdo real.
+    min_width, min_height : int, optional
+        Tamanho mínimo utilizável.
+    margem : int, optional
+        Folga somada ao tamanho pedido, para as bordas do gerenciador de janelas.
+    """
+    window.update_idletasks()
+    alvo = conteudo if conteudo is not None else window
+    responsive_geometry(
+        window,
+        alvo.winfo_reqwidth() + margem,
+        alvo.winfo_reqheight() + margem,
+        min_width=min_width, min_height=min_height,
+    )
+
+
+def quebra_automatica(label, margem: int = 40, minimo: int = 200):
+    """
+    Faz um rótulo quebrar a linha na largura que ele realmente tem.
+
+    ``wraplength`` é fixado em pixels, então um texto ajustado para uma janela
+    larga continua exigindo aquela largura numa janela estreita — e o excedente
+    é cortado horizontalmente, já que as telas do app só rolam na vertical.
+    Aqui a quebra passa a acompanhar a largura do widget a cada redimensionamento.
+
+    Parameters
+    ----------
+    label : ctk.CTkLabel
+        Rótulo de texto longo, posicionado com ``fill="x"`` ou ``sticky="ew"``.
+    margem : int, optional
+        Pixels descontados da largura (paddings internos do contêiner).
+    minimo : int, optional
+        Largura mínima de quebra, para o texto não virar uma coluna de palavras
+        soltas em janelas muito estreitas.
+
+    Returns
+    -------
+    O próprio rótulo, para permitir encadeamento com ``.pack()``/``.grid()``.
+
+    Notes
+    -----
+    O vínculo é feito no contêiner, e não no próprio rótulo, porque
+    ``CTkLabel.bind`` repassa o evento ao rótulo *interno* do customtkinter:
+    a largura que chegaria no evento seria a do texto já quebrado, e não a do
+    espaço disponível — realimentando a quebra a cada evento. A largura é lida
+    do widget depois que o gerenciador de geometria termina (``after_idle``),
+    quando ela já reflete o novo tamanho.
+    """
+    def _aplicar():
+        try:
+            largura = max(minimo, label.winfo_width() - margem)
+            if label.cget("wraplength") != largura:
+                label.configure(wraplength=largura)
+        except tk.TclError:
+            pass  # rótulo destruído entre o evento e a aplicação
+
+    def _ao_redimensionar(_evento=None):
+        try:
+            label.after_idle(_aplicar)
+        except tk.TclError:
+            pass
+
+    label.master.bind("<Configure>", _ao_redimensionar, add="+")
+    label.after_idle(_aplicar)
+    return label
+
+
 def bind_treeview_mousewheel(tree, rows: int = 3):
     """
     Habilita a rolagem por roda do mouse em um ``ttk.Treeview``.
