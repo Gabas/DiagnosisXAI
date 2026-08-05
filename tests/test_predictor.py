@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 
 from core.batch_processor import BatchProcessor
+from core.decision import PoliticaDecisao
 from core.inference import ModelLoader
 from core.predictor import PredictorEngine
 
@@ -67,12 +68,78 @@ def test_predict_svm_inclui_coluna_de_certeza(loader, lote_processado):
 
 
 @pytest.mark.parametrize("certeza, esperado", [
-    (50, 'Limítrofe'), (45, 'Limítrofe'), (55, 'Limítrofe'),
-    (40, 'Limítrofe'), (60, 'Limítrofe'),          # bordas inclusivas (±10)
-    (39.9, 'Definida'), (60.1, 'Definida'), (2, 'Definida'), (99, 'Definida'),
+    (15, 'Limítrofe'), (10, 'Limítrofe'), (20, 'Limítrofe'),
+    (5, 'Limítrofe'), (25, 'Limítrofe'),           # bordas inclusivas (limiar ±10)
+    (4.9, 'Definida'), (25.1, 'Definida'), (2, 'Definida'), (50, 'Definida'),
 ])
-def test_classificar_decisao(certeza, esperado):
-    assert PredictorEngine.classificar_decisao(certeza) == esperado
+def test_classificar_decisao_gira_em_torno_do_limiar_de_operacao(loader, certeza, esperado):
+    """A faixa de revisão acompanha o limiar do modelo, não os 50% do sklearn.
+
+    Com limiar de 15%, uma certeza de 50% é uma decisão folgada (bem acima do
+    corte) — e não mais um caso limítrofe, como seria sob a régua antiga."""
+    engine = PredictorEngine(loader, PoliticaDecisao({'SVM': 0.15}, banda=0.10))
+    assert engine.classificar_decisao(certeza, 'SVM') == esperado
+
+
+@pytest.mark.parametrize("modelo", ['Random Forest', 'SVM', 'KNN', 'Regressão Logística'])
+def test_rotulo_e_certeza_nunca_se_contradizem(loader, lote_processado, modelo):
+    """O rótulo e a certeza exibida saem da mesma probabilidade calibrada.
+
+    Antes o rótulo vinha do modelo original e a certeza do calibrado, então a
+    tabela chegava a mostrar 'Benigno' com 61% de certeza de malignidade."""
+    df_scaled, df_raw = lote_processado
+    engine = PredictorEngine(loader)
+    resultado = engine.predict(df_scaled, df_raw, modelo)
+
+    limiar = engine.politica.limiar(modelo) * 100
+    acima = resultado['Certeza_Maligno(%)'] >= limiar
+    marcado_maligno = resultado['Diagnóstico_IA'] == 'Maligno'
+    assert (acima == marcado_maligno).all()
+
+
+def test_limiar_mais_baixo_nunca_perde_maligno(loader, lote_processado):
+    """Baixar o limiar só pode acrescentar malignos, nunca retirar."""
+    df_scaled, df_raw = lote_processado
+    conservador = PredictorEngine(loader, PoliticaDecisao({'SVM': 0.50}))
+    sensivel = PredictorEngine(loader, PoliticaDecisao({'SVM': 0.15}))
+
+    marcados_conservador = conservador.predict(df_scaled, df_raw, 'SVM')['Diagnóstico_IA'] == 'Maligno'
+    marcados_sensivel = sensivel.predict(df_scaled, df_raw, 'SVM')['Diagnóstico_IA'] == 'Maligno'
+
+    assert (marcados_sensivel | marcados_conservador).equals(marcados_sensivel)
+    assert marcados_sensivel.sum() >= marcados_conservador.sum()
+
+
+def test_comite_esta_disponivel_e_nao_e_um_modelo_do_pkl(loader):
+    engine = PredictorEngine(loader)
+    assert PredictorEngine.NOME_COMITE in engine.modelos_disponiveis()
+    assert PredictorEngine.NOME_COMITE not in loader.models
+    # A Árvore não entra: sem probabilidade utilizável, não há o que promediar.
+    assert 'Árvore de Decisão' not in engine.membros_comite()
+
+
+def test_comite_gera_certeza_igual_a_media_dos_membros(loader, lote_processado):
+    df_scaled, df_raw = lote_processado
+    engine = PredictorEngine(loader)
+    resultado = engine.predict(df_scaled, df_raw, PredictorEngine.NOME_COMITE)
+
+    colunas_membros = [f'Certeza_{PredictorEngine.sigla(m)}(%)' for m in engine.membros_comite()]
+    assert all(c in resultado.columns for c in colunas_membros)
+
+    media = resultado[colunas_membros].mean(axis=1)
+    assert (media - resultado['Certeza_Maligno(%)']).abs().max() < 0.02  # só arredondamento
+
+
+def test_comite_marca_mais_malignos_que_o_limiar_padrao(loader, lote_processado):
+    """O ponto da calibração: o mesmo comitê acusa mais casos do que a 0,5."""
+    df_scaled, df_raw = lote_processado
+    comite = PredictorEngine.NOME_COMITE
+    calibrado = PredictorEngine(loader)
+    neutro = PredictorEngine(loader, PoliticaDecisao({comite: 0.50}))
+
+    n_calibrado = (calibrado.predict(df_scaled, df_raw, comite)['Diagnóstico_IA'] == 'Maligno').sum()
+    n_neutro = (neutro.predict(df_scaled, df_raw, comite)['Diagnóstico_IA'] == 'Maligno').sum()
+    assert n_calibrado > n_neutro
 
 
 def test_predict_svm_inclui_coluna_decisao(loader, lote_processado):

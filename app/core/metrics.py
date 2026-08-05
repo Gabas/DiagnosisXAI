@@ -30,6 +30,8 @@ import math
 
 import numpy as np
 
+from core.decision import NOME_COMITE
+
 CLASSE_POSITIVA = 'Maligno'
 CLASSE_NEGATIVA = 'Benigno'
 
@@ -86,6 +88,16 @@ PERFIL_MODELO = {
         'limite': "opaco por natureza (a decisão vive num espaço projetado), sensível à escolha "
                   "de hiperparâmetros e, com probability=True, as probabilidades saem de um "
                   "ajuste de Platt à parte — não da própria fronteira",
+    },
+    NOME_COMITE: {
+        'forte': "média das probabilidades calibradas de quatro modelos independentes: o engano "
+                 "isolado de um membro é diluído pelos demais, o que produz a decisão mais "
+                 "estável do conjunto — e, no limiar calibrado, a melhor combinação de "
+                 "sensibilidade e especificidade entre todas as opções do app",
+        'limite': "não possui explicador próprio: a justificativa precisa ser montada a partir "
+                  "dos relatórios dos membros, e quando eles discordam entre si não há uma "
+                  "narrativa única a apresentar ao clínico. É também a opção mais cara, pois "
+                  "executa os quatro modelos a cada lote",
     },
 }
 
@@ -391,9 +403,10 @@ def analise_critica(nome: str, metricas: dict, metricas_por_modelo: dict) -> dic
                          f"declarar um vencedor por diferença de décimos.")
 
     if metricas['auc'] is not None:
-        fortes.append(f"ROC-AUC de {metricas['auc']:.3f}: ordena os pacientes por risco bem "
-                      f"além do que o corte fixo de 50% aproveita — dá margem para baixar o "
-                      f"limiar e ganhar sensibilidade.")
+        fortes.append(f"ROC-AUC de {metricas['auc']:.3f}: mede a capacidade de ordenar os "
+                      f"pacientes por risco independentemente de onde o corte é posto — quanto "
+                      f"mais alto, mais o limiar pode ser deslocado sem que a discriminação "
+                      f"entre benignos e malignos se perca.")
 
     if perfil:
         ressalvas.append(_frase(perfil['limite']))
@@ -441,7 +454,7 @@ def _veredito(metricas: dict) -> str:
             f"dois sentidos e exigiria revisão humana de todos os casos.")
 
 
-def ressalvas_do_lote(metricas_por_modelo: dict) -> list:
+def ressalvas_do_lote(metricas_por_modelo: dict, politica=None) -> list:
     """
     Ressalvas metodológicas que valem para a auditoria inteira, não por modelo.
 
@@ -449,6 +462,10 @@ def ressalvas_do_lote(metricas_por_modelo: dict) -> list:
     ----------
     metricas_por_modelo : dict
         Saída de :func:`avaliar_modelos`.
+    politica : core.decision.PoliticaDecisao ou None, optional
+        Política em vigor. Quando informada e calibrada, o aviso sobre o ponto
+        de operação cita os limiares realmente usados — sem ela, o texto assume
+        o corte padrão de 50%.
 
     Returns
     -------
@@ -474,6 +491,20 @@ def ressalvas_do_lote(metricas_por_modelo: dict) -> list:
     avisos.append("Se este gabarito contém pacientes já vistos no treino, os números estão "
                   "otimistas: eles medem memorização, não generalização. A estimativa honesta "
                   "de desempenho é a validação cruzada repetida do notebook (Seção 10).")
-    avisos.append("Todas as métricas assumem o limiar fixo de 50%. Em rastreio, baixá-lo troca "
-                  "especificidade por sensibilidade — uma decisão clínica, não estatística.")
+    avisos.append(_ressalva_do_limiar(metricas_por_modelo, politica))
     return avisos
+
+
+def _ressalva_do_limiar(metricas_por_modelo: dict, politica) -> str:
+    """Aviso sobre o ponto de operação em que estas métricas foram medidas."""
+    if politica is None or not getattr(politica, 'calibrada', False):
+        return ("Todas as métricas assumem o limiar fixo de 50%. Em rastreio, baixá-lo troca "
+                "especificidade por sensibilidade — uma decisão clínica, não estatística.")
+
+    usados = ", ".join(f"{nome} {politica.limiar(nome) * 100:.1f}%"
+                       for nome in metricas_por_modelo
+                       if abs(politica.limiar(nome) - 0.5) > 1e-9)
+    return (f"Estes números valem para o limiar de operação em vigor ({usados or 'padrão'}), "
+            f"não para o corte de 50% do scikit-learn: foi ele que trocou especificidade por "
+            f"sensibilidade. Mudar o limiar muda toda a tabela acima — a escolha do ponto de "
+            f"operação é clínica, e está registrada em data/limiares.json.")

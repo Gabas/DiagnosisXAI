@@ -43,13 +43,16 @@ ESTATISTICAS = {
 
 # Colunas geradas pelo app (não são biomarcadores de entrada) — descrições para o tooltip.
 _COLUNAS_RESULTADO = {
-    "Diagnóstico_IA":     "Classe prevista pelo modelo selecionado: Maligno ou Benigno.",
-    "Certeza_Maligno(%)": "Probabilidade calibrada de o tumor ser Maligno (0–100%). Valores próximos "
-                          "de 50% indicam um caso limítrofe, que merece revisão.",
+    "Diagnóstico_IA":     "Classe prevista pelo modelo selecionado: Maligno ou Benigno. O corte não é "
+                          "50%, e sim o limiar de operação calibrado do modelo (exibido no Passo 3) — "
+                          "mais baixo, para não deixar passar tumores malignos.",
+    "Certeza_Maligno(%)": "Probabilidade calibrada de o tumor ser Maligno (0–100%). Compare-a com o "
+                          "limiar de operação, não com 50%: uma certeza de 25% pode significar "
+                          "\"Maligno\" se o limiar do modelo for 15%.",
     "Perfil":             "Indica se o paciente está dentro da distribuição de treino. \"Atípico\" = "
                           "perfil muito distante dos casos vistos no aprendizado (distância de "
                           "Mahalanobis além do limiar) — a previsão é menos confiável e merece cautela.",
-    "Decisão":            "\"Limítrofe\" quando a certeza calibrada está perto de 50% (a até 10 pontos) — "
+    "Decisão":            "\"Limítrofe\" quando a certeza está a até 10 pontos do limiar de operação — "
                           "a decisão é incerta e um pequeno deslocamento inverteria o diagnóstico, "
                           "então recomenda-se revisão. \"Definida\" caso contrário.",
 }
@@ -96,6 +99,10 @@ def descricao_coluna(nome):
         return _COLUNAS_RESULTADO[nome]
     if isinstance(nome, str) and nome.startswith("IA_"):
         return f"Diagnóstico do modelo {nome[3:]} (modo de comparação entre todas as IAs)."
+    if isinstance(nome, str) and nome.startswith("Certeza_") and nome != "Certeza_Maligno(%)":
+        return (f"Probabilidade calibrada de malignidade segundo o membro {nome[8:-4]} do comitê. "
+                f"A certeza final do comitê é a média das certezas dos membros — estas colunas "
+                f"mostram se a decisão veio de consenso ou de um único membro alarmado.")
 
     base, sufixo = separar_coluna(nome)
     if base in BIOMARCADORES_BASE and sufixo is not None:

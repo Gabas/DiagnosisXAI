@@ -155,17 +155,28 @@ def abrir_shap(master, loader, key, X_scaled, X_raw, indices, cache=None):
     from views.report_window_shap import ShapReportWindow
 
     explainer = construir_shap(loader, key, cache)
-    modelo = loader.models.get(MODELO_POR_KEY[key])
+    nome_modelo = MODELO_POR_KEY[key]
+    modelo = loader.models.get(nome_modelo)
 
     X_scaled = np.asarray(X_scaled, dtype=float)
     X_raw = np.asarray(X_raw, dtype=float)
     # A árvore foi treinada em dados brutos; os demais em dados padronizados.
     entrada = X_raw if key == 'dt' else X_scaled
 
-    preds = modelo.predict(entrada)
+    # O rótulo exibido vem do limiar de operação sobre a probabilidade calibrada
+    # — o mesmo caminho da tabela do Passo 3. Usar model.predict() aqui faria o
+    # relatório SHAP discordar do diagnóstico que o usuário está lendo.
+    politica = getattr(loader, 'politica', None)
+    calibrado = loader.calibrated_models.get(nome_modelo)
+    if politica is not None and calibrado is not None:
+        prob = calibrado.predict_proba(X_scaled)[:, 1]
+        classes = [politica.rotular(p, nome_modelo) for p in prob]
+    else:
+        preds = modelo.predict(entrada)
+        classes = ['Maligno' if p == ShapExplainer.CLASSE_MALIGNO else 'Benigno' for p in preds]
+
     pacientes = [
-        {'indice': int(indices[i]),
-         'classe': 'Maligno' if preds[i] == ShapExplainer.CLASSE_MALIGNO else 'Benigno'}
+        {'indice': int(indices[i]), 'classe': classes[i]}
         for i in range(len(indices))
     ]
     importancias = loader.shap_importances.get(key, [])

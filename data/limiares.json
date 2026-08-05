@@ -1,0 +1,35 @@
+{
+  "gerado_em": "05/08/2026 00:22",
+  "piso_especificidade": 92.0,
+  "banda_revisao": 0.1,
+  "metodo": "menor limiar com especificidade out-of-fold >= piso (5 dobras estratificadas sobre o treino, calibração de Platt por dobra)",
+  "limiares": {
+    "Regressão Logística": 0.1514,
+    "Random Forest": 0.1205,
+    "SVM": 0.1548,
+    "KNN": 0.1698,
+    "Comitê (voto suave)": 0.1459
+  },
+  "desempenho_treino": {
+    "Regressão Logística": {
+      "sensibilidade": 97.5,
+      "especificidade": 92.1
+    },
+    "Random Forest": {
+      "sensibilidade": 96.9,
+      "especificidade": 92.1
+    },
+    "SVM": {
+      "sensibilidade": 97.5,
+      "especificidade": 92.1
+    },
+    "KNN": {
+      "sensibilidade": 96.2,
+      "especificidade": 92.1
+    },
+    "Comitê (voto suave)": {
+      "sensibilidade": 98.1,
+      "especificidade": 92.1
+    }
+  }
+}

@@ -10,6 +10,7 @@ import pandas as pd
 
 from core.batch_processor import BatchProcessor
 from core.biomarkers import descricao_coluna
+from core.decision import aplicar_a_explicacoes
 from core.history_manager import HistoryManager
 from core.inference import ModelLoader
 from core.metrics import analise_critica, avaliar_modelos, ressalvas_do_lote
@@ -140,6 +141,7 @@ class PredictView(ctk.CTkFrame):
         self._ultima_explicacao = {}
         self._ultima_acuracia = None
         self._ultimas_metricas = {}
+        self._probabilidades = {}
         self._report_windows = {}
         self._shap_disponiveis = []
         self._opcoes_relatorio = {}
@@ -185,20 +187,28 @@ class PredictView(ctk.CTkFrame):
         ctk.CTkLabel(ia_frame, text="Passo 3: Inteligência Artificial", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=20, pady=(10, 5), sticky="w")
         
         # Volta a adicionar a opção "Todos (Comparação)" no topo da lista
-        modelos_disponiveis = ["Todos (Comparação)"] + list(self.model_loader.models.keys())
-        self.model_selector = ctk.CTkOptionMenu(ia_frame, values=modelos_disponiveis, state="disabled")
+        modelos_disponiveis = [self.NOME_TODOS] + self.predictor.modelos_disponiveis()
+        self.model_selector = ctk.CTkOptionMenu(ia_frame, values=modelos_disponiveis, state="disabled",
+                                                command=self._ao_trocar_modelo)
         self.model_selector.grid(row=1, column=0, padx=20, pady=10, sticky="w")
 
         self.btn_run = ctk.CTkButton(ia_frame, text="Processar Diagnóstico", state="disabled", command=self.process_batch, fg_color="#27ae60", hover_color="#2ecc71")
         self.btn_run.grid(row=1, column=1, padx=20, pady=10, sticky="w")
+        # Ponto de operação em vigor: sem isto, uma certeza de 25% rotulada como
+        # "Maligno" pareceria erro em vez de decisão deliberada.
+        self.lbl_limiar = ctk.CTkLabel(ia_frame, text="", font=ctk.CTkFont(size=12),
+                                       text_color="gray", justify="left", wraplength=760)
+        self.lbl_limiar.grid(row=2, column=0, columnspan=2, padx=20, pady=(0, 4), sticky="w")
+        self._ao_trocar_modelo(self.model_selector.get())
+
         self.lbl_run_error = ctk.CTkLabel(ia_frame, text="", font=ctk.CTkFont(size=12), text_color="#e74c3c", justify="left")
-        self.lbl_run_error.grid(row=2, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="w")
+        self.lbl_run_error.grid(row=3, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="w")
         # Aviso de perfis atípicos (fora da distribuição de treino), preenchido após a inferência.
         self.lbl_ood = ctk.CTkLabel(ia_frame, text="", font=ctk.CTkFont(size=12), justify="left", wraplength=760)
-        self.lbl_ood.grid(row=3, column=0, columnspan=2, padx=20, pady=(0, 4), sticky="w")
-        # Aviso de decisões limítrofes (certeza calibrada perto de 50%).
+        self.lbl_ood.grid(row=4, column=0, columnspan=2, padx=20, pady=(0, 4), sticky="w")
+        # Aviso de decisões limítrofes (certeza calibrada perto do limiar de operação).
         self.lbl_limitrofe = ctk.CTkLabel(ia_frame, text="", font=ctk.CTkFont(size=12), justify="left", wraplength=760)
-        self.lbl_limitrofe.grid(row=4, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="w")
+        self.lbl_limitrofe.grid(row=5, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="w")
 
         # --- Passo 4: Auditoria (Opcional) ---
         audit_frame = ctk.CTkFrame(container)
@@ -430,9 +440,30 @@ class PredictView(ctk.CTkFrame):
                 text_color="#2ecc71",
             )
 
+    def _ao_trocar_modelo(self, modelo: str):
+        """
+        Exibe o ponto de operação do modelo selecionado no Passo 3.
+
+        Parameters
+        ----------
+        modelo : str
+            Nome escolhido no seletor.
+        """
+        politica = self.predictor.politica
+        if modelo == self.NOME_TODOS:
+            texto = ("Cada modelo decide pelo seu próprio limiar calibrado."
+                     if politica.calibrada else
+                     "Limiar de decisão: 50% (padrão, sem calibração de operação).")
+        elif modelo in self.predictor.MODELOS_SEM_CERTEZA:
+            texto = ("A Árvore de Decisão não fornece probabilidade utilizável "
+                     "(folhas puras): decide pelas próprias regras, sem limiar ajustável.")
+        else:
+            texto = politica.resumo(modelo)
+        self.lbl_limiar.configure(text=texto)
+
     def _atualizar_aviso_limitrofe(self):
         """
-        Atualiza o aviso de decisões limítrofes (certeza calibrada perto de 50%).
+        Atualiza o aviso de decisões limítrofes (certeza perto do limiar de operação).
 
         Lê a coluna ``Decisão`` do resultado (preenchida pelo PredictorEngine) e
         resume quantos casos são limítrofes — decisões incertas em que um pequeno
@@ -448,8 +479,8 @@ class PredictView(ctk.CTkFrame):
         limitrofes = int((df['Decisão'] == 'Limítrofe').sum())
         if limitrofes:
             self.lbl_limitrofe.configure(
-                text=(f"⚠ {limitrofes} de {total} caso(s) limítrofe(s) (certeza calibrada perto de "
-                      f"50%) — recomenda-se revisão."),
+                text=(f"⚠ {limitrofes} de {total} caso(s) limítrofe(s) (certeza perto do limiar "
+                      f"de decisão) — recomenda-se revisão."),
                 text_color="#e67e22",
             )
         else:
@@ -505,15 +536,46 @@ class PredictView(ctk.CTkFrame):
         self._ultima_explicacao = {}
         self._shap_disponiveis = []
         self._opcoes_relatorio = {}
+        self._probabilidades = {}
         self.report_menu.configure(values=["—"], state="disabled")
         self.report_menu.set("—")
         self.btn_abrir_relatorio.configure(state="disabled")
         self.lbl_report_hint.configure(
             text="Disponível após processar o diagnóstico.", text_color="gray")
 
-    def _gerar_exato(self, tipo: str, funcao):
+    def _modelos_explicados(self, modelo_escolhido: str) -> set:
+        """
+        Modelos cujos relatórios devem ser preparados para a escolha do Passo 3.
+
+        Um único modelo explica a si mesmo; "Todos (Comparação)" explica os
+        cinco; e o comitê explica cada um dos seus membros — é assim que a
+        decisão do voto suave fica auditável, já que o comitê não tem
+        explicador próprio: quem decidiu foram os membros.
+
+        Parameters
+        ----------
+        modelo_escolhido : str
+            Nome selecionado no Passo 3.
+
+        Returns
+        -------
+        set[str]
+            Nomes dos modelos a explicar.
+        """
+        if modelo_escolhido == self.NOME_TODOS:
+            return set(self.model_loader.models)
+        if modelo_escolhido == self.predictor.NOME_COMITE:
+            return set(self.predictor.membros_comite())
+        return {modelo_escolhido}
+
+    def _gerar_exato(self, tipo: str, nome_modelo: str, funcao):
         """
         Gera o relatório exato de um modelo, isolando eventuais falhas.
+
+        Após gerar, alinha as explicações à decisão que a tabela do Passo 3
+        exibe (classe, probabilidade e marcação de limítrofe vindas da
+        probabilidade calibrada e do limiar de operação) — sem isso, relatório
+        e tabela discordariam em toda a faixa entre o limiar e 50%.
 
         Se o explicador estiver indisponível (por exemplo, um .pkl regenerado
         com código antigo), o problema é registrado e o processamento segue —
@@ -522,12 +584,18 @@ class PredictView(ctk.CTkFrame):
         Parameters
         ----------
         tipo : str
-            'arvore', 'logistica' ou 'knn'.
+            'arvore', 'logistica', 'knn', 'randomforest' ou 'svm'.
+        nome_modelo : str
+            Nome do modelo correspondente, para resolver o limiar de operação.
         funcao : callable
             Função sem argumentos que produz o dicionário do relatório.
         """
         try:
-            self._ultima_explicacao[tipo] = funcao()
+            dados = funcao()
+            aplicar_a_explicacoes(
+                dados.get('explicacoes', []), self._probabilidades.get(nome_modelo),
+                self.predictor.politica, nome_modelo)
+            self._ultima_explicacao[tipo] = dados
         except Exception as e:
             print(f"Explicador '{tipo}' indisponível: {e}")
 
@@ -550,40 +618,45 @@ class PredictView(ctk.CTkFrame):
         if self.df_limpo is None or self.df_padronizado is None:
             return
 
-        todos = modelo_escolhido == self.NOME_TODOS
+        alvos = self._modelos_explicados(modelo_escolhido)
         explicadores = self.model_loader.explainers
+
+        # Probabilidades calibradas de cada modelo explicado: é com elas que as
+        # janelas do Passo 5 exibem a mesma decisão da tabela do Passo 3.
+        self._probabilidades = self.predictor.probabilidades_calibradas(
+            self.df_padronizado, self.df_limpo, alvos)
 
         # Cada explicador é isolado: se um estiver indisponível (ex.: .pkl antigo
         # com bug), os demais relatórios continuam funcionando.
         exp = explicadores.get('arvore')
-        if exp is not None and (todos or modelo_escolhido == self.NOME_ARVORE):
-            self._gerar_exato('arvore', lambda: {
+        if exp is not None and self.NOME_ARVORE in alvos:
+            self._gerar_exato('arvore', self.NOME_ARVORE, lambda: {
                 'importancias': self._importancias_arvore(exp),
                 'explicacoes': exp.explain(self.df_limpo),
             })
         exp = explicadores.get('logistica')
-        if exp is not None and (todos or modelo_escolhido == self.NOME_LOGISTICA):
-            self._gerar_exato('logistica', lambda: {
+        if exp is not None and self.NOME_LOGISTICA in alvos:
+            self._gerar_exato('logistica', self.NOME_LOGISTICA, lambda: {
                 'importancias': exp.global_importances(top_n=10),
                 'explicacoes': exp.explain(self.df_padronizado, self.df_limpo),
             })
         exp = explicadores.get('knn')
-        if exp is not None and (todos or modelo_escolhido == self.NOME_KNN):
-            self._gerar_exato('knn', lambda: {
+        if exp is not None and self.NOME_KNN in alvos:
+            self._gerar_exato('knn', self.NOME_KNN, lambda: {
                 'importancias': exp.global_importances(top_n=10),
                 'explicacoes': exp.explain(self.df_padronizado),
                 'contexto': exp.contexto(),
             })
         exp = explicadores.get('randomforest')
-        if exp is not None and (todos or modelo_escolhido == self.NOME_RF):
-            self._gerar_exato('randomforest', lambda: {
+        if exp is not None and self.NOME_RF in alvos:
+            self._gerar_exato('randomforest', self.NOME_RF, lambda: {
                 'importancias': exp.global_importances(top_n=10),
                 'explicacoes': exp.explain(self.df_padronizado),
                 'contexto': exp.contexto(),
             })
         exp = explicadores.get('svm')
-        if exp is not None and (todos or modelo_escolhido == self.NOME_SVM):
-            self._gerar_exato('svm', lambda: {
+        if exp is not None and self.NOME_SVM in alvos:
+            self._gerar_exato('svm', self.NOME_SVM, lambda: {
                 'importancias': exp.global_importances(top_n=10),
                 'explicacoes': exp.explain(self.df_padronizado),
                 'contexto': exp.contexto(),
@@ -593,8 +666,7 @@ class PredictView(ctk.CTkFrame):
         # SHAP: disponível para cada modelo executado que tenha artefatos salvos.
         if self.model_loader.shap_background is not None:
             for nome_modelo, key in self._MODELO_KEY.items():
-                if (todos or modelo_escolhido == nome_modelo) \
-                        and key in self.model_loader.shap_importances:
+                if nome_modelo in alvos and key in self.model_loader.shap_importances:
                     self._shap_disponiveis.append(key)
 
         # Monta as opções do menu: exatos primeiro, depois SHAP.
@@ -942,7 +1014,7 @@ class PredictView(ctk.CTkFrame):
             linhas.append(f"   Veredito: {critica['veredito']}")
             linhas.append("")
 
-        ressalvas = ressalvas_do_lote(metricas_por_modelo)
+        ressalvas = ressalvas_do_lote(metricas_por_modelo, self.predictor.politica)
         if ressalvas:
             linhas.append("■ Limites desta auditoria")
             linhas.extend(f"      • {t}" for t in ressalvas)

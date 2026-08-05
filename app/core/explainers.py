@@ -23,6 +23,8 @@ próprio Python. O artefato passa a ser independente da versão do interpretador
 
 import numpy as np
 
+from core.decision import limitrofe_padrao
+
 
 class DecisionTreeExplainer:
     """
@@ -227,8 +229,6 @@ class LogisticRegressionExplainer:
     """
 
     CLASSE_MALIGNO = 1
-    # Faixa de probabilidade em que o modelo é considerado pouco decidido.
-    FAIXA_LIMITROFE = (0.30, 0.70)
     # Máximo de contribuições guardadas por paciente (o relatório exibe as 6 maiores).
     MAX_CONTRIBUICOES = 10
 
@@ -343,7 +343,7 @@ class LogisticRegressionExplainer:
                 'classe': 'Maligno' if predicoes[i] == self.CLASSE_MALIGNO else 'Benigno',
                 'probabilidade': round(p * 100, 1),
                 'distancia': float(distancia[i]),
-                'limitrofe': bool(self.FAIXA_LIMITROFE[0] <= p <= self.FAIXA_LIMITROFE[1]),
+                'limitrofe': limitrofe_padrao(p),
                 'contribuicoes': lista,
                 'x_plot': float(distancia[i]),
                 'y_plot': float(y_plot[i]),
@@ -398,7 +398,6 @@ class KNNExplainer:
     """
 
     CLASSE_MALIGNO = 1
-    LIMIAR_CONFIANCA = 0.65  # abaixo disso, o voto é apertado (caso limítrofe)
 
     def __init__(self, model, feature_names, y_train, pca, train_2d, importancias):
         self.model = model
@@ -491,7 +490,7 @@ class KNNExplainer:
                 'peso_maligno': round(peso_mal * 100, 1),
                 'peso_benigno': round((1.0 - peso_mal) * 100, 1),
                 'pondera_distancia': self._pondera_distancia,
-                'limitrofe': bool(confianca < self.LIMIAR_CONFIANCA),
+                'limitrofe': limitrofe_padrao(p),
                 'vizinhos': vizinhos,
                 'x_plot': float(query_2d[i, 0]),
                 'y_plot': float(query_2d[i, 1]),
@@ -525,8 +524,6 @@ class RandomForestExplainer:
     """
 
     CLASSE_MALIGNO = 1
-    # Faixa de probabilidade em que a floresta é considerada pouco decidida.
-    FAIXA_LIMITROFE = (0.35, 0.65)
     N_BINS = 10  # bins do histograma de probabilidades das árvores (consenso)
 
     def __init__(self, model, feature_names):
@@ -621,7 +618,7 @@ class RandomForestExplainer:
                 'confianca': round(confianca * 100, 1),
                 'votos_maligno': vm,
                 'votos_benigno': self.n_arvores - vm,
-                'limitrofe': bool(self.FAIXA_LIMITROFE[0] <= p <= self.FAIXA_LIMITROFE[1]),
+                'limitrofe': limitrofe_padrao(p),
                 'hist': [int(h) for h in hist],
             })
         return explicacoes
@@ -659,8 +656,6 @@ class SVMExplainer:
     """
 
     CLASSE_MALIGNO = 1
-    # Faixa de probabilidade em que o modelo é considerado pouco decidido.
-    FAIXA_LIMITROFE = (0.35, 0.65)
     # Nº de vetores de suporte guardados por lado (Maligno/Benigno) no relatório.
     MAX_POR_LADO = 5
 
@@ -826,7 +821,7 @@ class SVMExplainer:
                 'probabilidade': round(p * 100, 1),
                 'confianca': round(confianca * 100, 1),
                 'distancia': float(decisao[i]),
-                'limitrofe': bool(self.FAIXA_LIMITROFE[0] <= p <= self.FAIXA_LIMITROFE[1]),
+                'limitrofe': limitrofe_padrao(p),
                 'vies': self._intercept,
                 'forca_maligno': forca_maligno,
                 'forca_benigno': forca_benigno,

@@ -175,6 +175,15 @@ def test_ressalvas_do_lote_avisam_sobre_amostra_pequena():
     avisos = ressalvas_do_lote(metricas)
     assert any('Lote pequeno' in a for a in avisos)
     assert any('treino' in a for a in avisos)      # aviso de vazamento é sempre exibido
+    assert any('50%' in a for a in avisos)         # sem política, o corte é o padrão
+
+
+def test_ressalvas_do_lote_citam_o_limiar_de_operacao_em_vigor():
+    from core.decision import PoliticaDecisao
+
+    metricas = {'SVM': calcular_metricas(*_lote(vp=50, fn=1, fp=2, vn=90))}
+    avisos = ressalvas_do_lote(metricas, PoliticaDecisao({'SVM': 0.155}))
+    assert any('SVM 15.5%' in a for a in avisos)
 
 
 def test_ressalvas_do_lote_sem_metricas():

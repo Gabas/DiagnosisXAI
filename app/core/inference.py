@@ -31,10 +31,17 @@ class ModelLoader:
         Explicadores de explicabilidade (XAI) gerados e serializados pelo
         notebook: {'arvore': ..., 'logistica': ...}. Valores None quando o
         .pkl foi gerado por uma versão do notebook sem essa etapa.
+    politica : core.decision.PoliticaDecisao
+        Limiar de operação por modelo e faixa de revisão, lidos de
+        ``data/limiares.json`` (gerado por ``scripts/calibrar_limiares.py``).
+        Recai na política neutra (limiar 0,5) quando o arquivo não existe.
     """
 
     def __init__(self):
         """Inicializa o ModelLoader e extrai os artefactos salvos em disco."""
+        from core.decision import PoliticaDecisao
+
+        self.politica = PoliticaDecisao.carregar()
         self.scaler = None
         self.feature_names = None
         self.models = {}
