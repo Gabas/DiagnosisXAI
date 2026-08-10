@@ -25,7 +25,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from utils.ui import (ScrollableFrame, adicionar_barra_zoom, ajustar_ao_conteudo,
                       bind_treeview_mousewheel, figura_responsiva, itens_visiveis,
                       responsive_geometry)
-from views.report_common import PatientPDFExportMixin
+from views.report_common import cor_da_classe, PatientPDFExportMixin
 
 
 class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
@@ -50,6 +50,7 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
 
     COR_MALIGNO = "#e74c3c"
     COR_BENIGNO = "#2ecc71"
+    COR_REVISAR = "#e67e22"   # laranja: caso devolvido para revisão humana
     COR_FUNDO = "#2b2b2b"
 
     def __init__(self, master, importancias: list, explicacoes: list,
@@ -126,6 +127,9 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
 
         n = len(self._explicacoes)
         malignos = sum(1 for e in self._explicacoes if e['classe'] == 'Maligno')
+        benignos = sum(1 for e in self._explicacoes if e['classe'] == 'Benigno')
+        adiados = n - malignos - benignos
+        revisar = f"    Revisar: {adiados}" if adiados else ""
         limitrofes = sum(1 for e in self._explicacoes if e['limitrofe'])
         sv_txt = f"{self._n_support} vetores de suporte"
         if self._n_sv_mal is not None and self._n_sv_ben is not None:
@@ -133,7 +137,7 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         ctk.CTkLabel(
             header,
             text=(f"SVM (kernel RBF)   ·   {n} paciente(s)   ·   "
-                  f"Maligno: {malignos}    Benigno: {n - malignos}   ·   "
+                  f"Maligno: {malignos}    Benigno: {benignos}{revisar}   ·   "
                   f"Casos limítrofes: {limitrofes}\n{sv_txt}"),
             font=ctk.CTkFont(size=13), text_color="gray", justify="left",
         ).pack(anchor="w")
@@ -225,7 +229,7 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
                 # Peso visual (tamanho/opacidade) proporcional à confiança do
                 # modelo — quanto mais perto da margem, mais discreto o marcador.
                 conf = max(0.0, min(1.0, (e['confianca'] - 50.0) / 50.0))
-                cor = self.COR_MALIGNO if e['classe'] == 'Maligno' else self.COR_BENIGNO
+                cor = cor_da_classe(e['classe'])
                 ax.scatter([x], [y], c=cor, s=32 + 40 * conf, marker="D",
                           alpha=0.35 + 0.65 * conf, edgecolors="white",
                           linewidths=0.6, zorder=3)
@@ -332,6 +336,7 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
 
         self._tree.tag_configure("Maligno", foreground=self.COR_MALIGNO)
         self._tree.tag_configure("Benigno", foreground=self.COR_BENIGNO)
+        self._tree.tag_configure("Revisar", foreground=self.COR_REVISAR)
 
         for e in explicacoes:
             margem = f"{e['distancia']:+.3f}"

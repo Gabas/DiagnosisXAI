@@ -5,7 +5,26 @@ Funcionalidade compartilhada entre as janelas de relatório de explicabilidade
 
 from tkinter import filedialog, messagebox
 
+from core.decision import ROTULO_MALIGNO, ROTULO_REVISAR
 from utils.pdf_report import export_patient_report, resolve_reports_dir
+
+COR_MALIGNO = "#e74c3c"
+COR_BENIGNO = "#2ecc71"
+COR_REVISAR = "#e67e22"
+
+
+def cor_da_classe(classe: str) -> str:
+    """
+    Cor de um paciente segundo o que o modelo decidiu sobre ele.
+
+    Existe porque a decisão deixou de ser binária: com a recusa ligada, pintar
+    "Revisar" com a cor de Benigno (o comportamento de um ``if maligno else``)
+    faria um caso não decidido parecer um caso liberado — a confusão mais cara
+    possível nesta tela.
+    """
+    if classe == ROTULO_MALIGNO:
+        return COR_MALIGNO
+    return COR_REVISAR if classe == ROTULO_REVISAR else COR_BENIGNO
 
 
 class PatientPDFExportMixin:

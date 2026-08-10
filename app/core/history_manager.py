@@ -39,7 +39,7 @@ class HistoryManager:
 
     def save_session(self, arquivo: str, modelo: str, total: int,
                      malignos: int | None, benignos: int | None,
-                     relatorio: dict | None = None):
+                     relatorio: dict | None = None, adiados: int = 0):
         """
         Salva uma nova sessão de diagnóstico no topo do histórico.
 
@@ -59,6 +59,10 @@ class HistoryManager:
             Relatório de explicabilidade da Árvore de Decisão, no formato
             {'importancias': [...], 'explicacoes': [...]}. None quando a árvore
             não foi executada. Fica embutido na sessão e é removido junto com ela.
+        adiados : int, optional
+            Pacientes devolvidos para revisão (opção de recusa ligada). Não
+            entram em ``malignos`` nem em ``benignos``: sem esta contagem, os
+            três números não fecham com ``total``.
         """
         entries = self.load()
         entries.insert(0, {
@@ -68,6 +72,7 @@ class HistoryManager:
             'total': total,
             'malignos': malignos,
             'benignos': benignos,
+            'adiados': adiados,
             'acuracia': None,
             'relatorio': relatorio,
         })

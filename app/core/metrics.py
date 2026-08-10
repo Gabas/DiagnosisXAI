@@ -30,7 +30,7 @@ import math
 
 import numpy as np
 
-from core.decision import NOME_COMITE
+from core.decision import NOME_COMITE, ROTULO_REVISAR
 
 CLASSE_POSITIVA = 'Maligno'
 CLASSE_NEGATIVA = 'Benigno'
@@ -172,19 +172,33 @@ def calcular_metricas(reais, previstos, certezas=None) -> dict:
     dict
         Chaves: ``n``, ``vp``, ``fn``, ``fp``, ``vn``, ``prevalencia``,
         ``acuracia``, ``sensibilidade``, ``especificidade``, ``precisao``,
-        ``vpn``, ``f1``, ``auc`` e os intervalos ``ic_acuracia``,
-        ``ic_sensibilidade``, ``ic_especificidade``. Proporções em porcentagem;
-        ``None`` quando indefinidas (ex.: especificidade sem nenhum benigno real).
+        ``vpn``, ``f1``, ``auc``, ``adiados``, ``adiados_malignos``,
+        ``cobertura`` e os intervalos ``ic_acuracia``, ``ic_sensibilidade``,
+        ``ic_especificidade``. Proporções em porcentagem; ``None`` quando
+        indefinidas (ex.: especificidade sem nenhum benigno real).
+
+    Notes
+    -----
+    Casos devolvidos para revisão (previsão ``'Revisar'``) ficam **fora** da
+    matriz de confusão: não há decisão para pontuar como certa ou errada.
+    Contá-los como erro puniria a cautela; contá-los como acerto premiaria a
+    omissão. Eles aparecem em ``adiados`` e reduzem ``cobertura`` — que é o
+    número sem o qual as demais métricas ficam incomparáveis, já que um modelo
+    pode zerar os erros simplesmente decidindo pouco.
     """
     reais = list(reais)
     previstos = list(previstos)
 
-    vp = sum(1 for r, p in zip(reais, previstos) if r == CLASSE_POSITIVA and p == CLASSE_POSITIVA)
-    fn = sum(1 for r, p in zip(reais, previstos) if r == CLASSE_POSITIVA and p == CLASSE_NEGATIVA)
-    fp = sum(1 for r, p in zip(reais, previstos) if r == CLASSE_NEGATIVA and p == CLASSE_POSITIVA)
-    vn = sum(1 for r, p in zip(reais, previstos) if r == CLASSE_NEGATIVA and p == CLASSE_NEGATIVA)
+    decididos = [(r, p) for r, p in zip(reais, previstos) if p != ROTULO_REVISAR]
+    adiados = [r for r, p in zip(reais, previstos) if p == ROTULO_REVISAR]
+
+    vp = sum(1 for r, p in decididos if r == CLASSE_POSITIVA and p == CLASSE_POSITIVA)
+    fn = sum(1 for r, p in decididos if r == CLASSE_POSITIVA and p == CLASSE_NEGATIVA)
+    fp = sum(1 for r, p in decididos if r == CLASSE_NEGATIVA and p == CLASSE_POSITIVA)
+    vn = sum(1 for r, p in decididos if r == CLASSE_NEGATIVA and p == CLASSE_NEGATIVA)
 
     n = vp + fn + fp + vn
+    total = n + len(adiados)
     positivos = vp + fn
     negativos = fp + vn
 
@@ -192,6 +206,10 @@ def calcular_metricas(reais, previstos, certezas=None) -> dict:
 
     return {
         'n': n,
+        'total': total,
+        'adiados': len(adiados),
+        'adiados_malignos': sum(1 for r in adiados if r == CLASSE_POSITIVA),
+        'cobertura': _proporcao(n, total),
         'vp': vp, 'fn': fn, 'fp': fp, 'vn': vn,
         'prevalencia': _proporcao(positivos, n),
         'acuracia': _proporcao(vp + vn, n),
@@ -354,8 +372,21 @@ def analise_critica(nome: str, metricas: dict, metricas_por_modelo: dict) -> dic
     if perfil:
         fortes.append(_frase(perfil['forte']))
 
+    # --- Recusa: o que foi devolvido ao médico em vez de decidido ---
+    adiados = metricas.get('adiados', 0)
+    if adiados:
+        cobertura = metricas['cobertura']
+        if fn == 0 and fp == 0:
+            fortes.append(f"Não errou nenhum dos {n} casos que aceitou decidir — o preço dessa "
+                          f"garantia é ter devolvido os outros {adiados}.")
+        ressalvas.append(
+            f"Decidiu apenas {cobertura:.1f}% do lote: {adiados} paciente(s) "
+            f"({metricas['adiados_malignos']} deles malignos) voltaram para avaliação humana. "
+            f"Todas as métricas desta linha descrevem só a parte decidida — comparar com um "
+            f"modelo que decide tudo é comparar coisas diferentes.")
+
     # --- O erro que importa: falso negativo (câncer classificado como benigno) ---
-    if fn == 0 and metricas['vp'] + fn > 0:
+    if fn == 0 and metricas['vp'] + fn > 0 and not adiados:
         fortes.append(f"Não deixou passar nenhum tumor maligno neste lote "
                       f"({metricas['vp']} de {metricas['vp']} detectados).")
     elif fn > 0:
@@ -433,6 +464,15 @@ def _veredito(metricas: dict) -> str:
     if sens is None or espec is None:
         return "Lote sem as duas classes no gabarito — não dá para julgar o modelo por ele."
 
+    adiados = metricas.get('adiados', 0)
+    if adiados and fn == 0 and fp == 0:
+        return (f"Modo mais defensável do app: acertou tudo o que decidiu ({metricas['cobertura']:.0f}% "
+                f"do lote) e admitiu não saber no resto. Só é utilizável se a fila de "
+                f"{adiados} revisão(ões) couber na rotina do serviço.")
+    if adiados:
+        return (f"Mesmo se abstendo em {adiados} caso(s), ainda errou entre os que decidiu "
+                f"({fn} FN, {fp} FP) — a recusa não está isolando os casos difíceis como deveria.")
+
     if fn == 0 and espec >= 95:
         return ("Perfil adequado para triagem assistida: não perdeu nenhum maligno e manteve os "
                 "alarmes falsos sob controle. Ainda assim, o laudo final é humano.")
@@ -477,11 +517,18 @@ def ressalvas_do_lote(metricas_por_modelo: dict, politica=None) -> list:
         return []
 
     qualquer = next(iter(metricas_por_modelo.values()))
-    n = qualquer['n']
-    positivos = qualquer['vp'] + qualquer['fn']
-    negativos = qualquer['vn'] + qualquer['fp']
+    # A composição é a do lote inteiro, inclusive os adiados: ela descreve os
+    # dados, não o que cada modelo escolheu decidir.
+    n = qualquer.get('total', qualquer['n'])
+    positivos = qualquer['vp'] + qualquer['fn'] + qualquer.get('adiados_malignos', 0)
+    negativos = n - positivos
 
     avisos = []
+    if any(m.get('adiados') for m in metricas_por_modelo.values()):
+        avisos.append("Com a recusa ligada, sensibilidade e especificidade valem apenas entre os "
+                      "casos decididos. Leia-as sempre ao lado da cobertura: decidir menos torna "
+                      "as duas mais fáceis, e um modelo que se abstivesse de tudo exibiria 100% "
+                      "em ambas.")
     if positivos < MINIMO_POR_CLASSE or negativos < MINIMO_POR_CLASSE:
         avisos.append(f"Lote pequeno ({n} pacientes: {positivos} malignos, {negativos} benignos). "
                       f"Um único paciente a mais ou a menos move as métricas em vários pontos "

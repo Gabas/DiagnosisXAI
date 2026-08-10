@@ -15,8 +15,10 @@ from core.decision import (
     BANDA_PADRAO,
     LIMIAR_NEUTRO,
     PoliticaDecisao,
+    ROTULO_REVISAR,
     ZONA_DEFINIDA,
     ZONA_LIMITROFE,
+    ZONA_REVISAO,
     aplicar_a_explicacoes,
     limitrofe_padrao,
 )
@@ -103,6 +105,71 @@ def test_resumo_traz_o_desempenho_medido_no_treino():
     texto = politica.resumo('SVM')
     assert 'sensibilidade 97.5%' in texto
     assert 'especificidade 92.1%' in texto
+
+
+# --- Opção de recusa (coluna "Revisar") ---
+
+@pytest.fixture
+def com_recusa():
+    """Política com faixa de recusa calibrada para o SVM, já ligada."""
+    politica = PoliticaDecisao(
+        {'SVM': 0.15, 'KNN': 0.30}, banda=0.10,
+        faixas_revisao={'SVM': (0.01, 0.70)},
+        metadados={'cobertura_treino': {'SVM': 64.8}},
+    )
+    politica.adiar_incertos = True
+    return politica
+
+
+def test_recusa_comeca_desligada(politica):
+    """Ligar a recusa muda o que o app entrega — não pode ser o padrão silencioso."""
+    assert PoliticaDecisao().adiar_incertos is False
+    assert politica.rotular(0.20, 'SVM') == 'Maligno'   # decide, mesmo incerto
+
+
+def test_recusa_divide_em_tres_saidas(com_recusa):
+    assert com_recusa.rotular(0.005, 'SVM') == 'Benigno'      # abaixo da faixa
+    assert com_recusa.rotular(0.80, 'SVM') == 'Maligno'       # acima da faixa
+    assert com_recusa.rotular(0.70, 'SVM') == 'Maligno'       # limite superior decide
+    assert com_recusa.rotular(0.35, 'SVM') == ROTULO_REVISAR  # dentro: não decide
+    assert com_recusa.rotular(0.01, 'SVM') == ROTULO_REVISAR  # limite inferior não decide
+
+
+def test_recusa_so_vale_para_modelo_com_faixa(com_recusa):
+    """O KNN não tem faixa: continua decidindo tudo, mesmo com a recusa ligada."""
+    assert not com_recusa.pode_adiar('KNN')
+    assert com_recusa.rotular(0.35, 'KNN') == 'Maligno'
+    assert com_recusa.pode_adiar('SVM')
+
+
+def test_zona_de_um_caso_adiado(com_recusa):
+    assert com_recusa.zona(0.35, 'SVM') == ZONA_REVISAO
+    assert com_recusa.zona(0.005, 'SVM') == ZONA_DEFINIDA
+
+
+def test_resumo_descreve_a_faixa_e_a_cobertura(com_recusa):
+    texto = com_recusa.resumo('SVM')
+    assert '1.0%' in texto and '70.0%' in texto
+    assert '65% dos casos' in texto or 'decidiu 65%' in texto
+
+
+def test_aplicar_marca_explicacoes_adiadas(com_recusa):
+    explicacoes = aplicar_a_explicacoes(_explicacoes(), [0.35, 0.005, 0.99], com_recusa, 'SVM')
+    assert explicacoes[0]['classe'] == ROTULO_REVISAR
+    assert explicacoes[1]['classe'] == 'Benigno'
+    assert explicacoes[2]['classe'] == 'Maligno'
+    # Sem classe decidida, exibe-se a confiança no lado para o qual pendeu.
+    assert explicacoes[0]['confianca'] == 65.0
+
+
+def test_carregar_le_a_faixa_de_recusa(tmp_path):
+    caminho = tmp_path / 'limiares.json'
+    caminho.write_text(json.dumps({
+        'limiares': {'SVM': 0.2}, 'faixas_recusa': {'SVM': [0.01, 0.7]},
+    }), encoding='utf-8')
+    politica = PoliticaDecisao.carregar(str(caminho))
+    assert politica.faixa_recusa('SVM') == (0.01, 0.7)
+    assert politica.faixa_recusa('KNN') is None
 
 
 def test_limitrofe_padrao_gira_em_torno_de_meio():

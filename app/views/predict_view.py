@@ -10,7 +10,7 @@ import pandas as pd
 
 from core.batch_processor import BatchProcessor
 from core.biomarkers import descricao_coluna
-from core.decision import aplicar_a_explicacoes
+from core.decision import ROTULO_REVISAR, aplicar_a_explicacoes
 from core.history_manager import HistoryManager
 from core.inference import ModelLoader
 from core.metrics import analise_critica, avaliar_modelos, ressalvas_do_lote
@@ -68,6 +68,7 @@ class PredictView(ctk.CTkFrame):
     # as métricas — é ela que permite conferir os percentuais em casos pequenos.
     _COLUNAS_METRICAS = [
         ("modelo", "Modelo", 170),
+        ("cobertura", "Cobertura", 90),
         ("acuracia", "Acurácia", 90),
         ("sensibilidade", "Sensibilidade", 110),
         ("especificidade", "Especificidade", 115),
@@ -82,6 +83,10 @@ class PredictView(ctk.CTkFrame):
     # Definição de cada métrica, exibida como tooltip no cabeçalho da tabela.
     _DESCRICAO_METRICA = {
         "modelo": "Modelo de IA avaliado contra o gabarito deste lote.",
+        "cobertura": "Fração do lote em que o modelo aceitou decidir. Abaixo de 100%, todas as "
+                     "outras colunas descrevem apenas essa parte — os casos devolvidos para "
+                     "revisão não entram na matriz de confusão, pois não houve decisão a "
+                     "pontuar. Decidir menos torna as demais métricas mais fáceis.",
         "acuracia": "Proporção de acertos no lote inteiro. Isolada, engana: num lote "
                     "majoritariamente benigno, um modelo que nunca acusa malignidade já "
                     "exibe acurácia alta.",
@@ -194,6 +199,15 @@ class PredictView(ctk.CTkFrame):
 
         self.btn_run = ctk.CTkButton(ia_frame, text="Processar Diagnóstico", state="disabled", command=self.process_batch, fg_color="#27ae60", hover_color="#2ecc71")
         self.btn_run.grid(row=1, column=1, padx=20, pady=10, sticky="w")
+
+        # Opção de recusa: desligada por padrão porque muda o que o app entrega
+        # (parte do lote volta para o médico) — é decisão de quem opera.
+        self.var_adiar = ctk.BooleanVar(value=False)
+        self.chk_adiar = ctk.CTkCheckBox(
+            ia_frame, text="Adiar casos incertos (coluna \"Revisar\")",
+            variable=self.var_adiar, command=self._ao_alternar_recusa,
+            font=ctk.CTkFont(size=12))
+        self.chk_adiar.grid(row=1, column=2, padx=(0, 20), pady=10, sticky="w")
         # Ponto de operação em vigor: sem isto, uma certeza de 25% rotulada como
         # "Maligno" pareceria erro em vez de decisão deliberada.
         self.lbl_limiar = ctk.CTkLabel(ia_frame, text="", font=ctk.CTkFont(size=12),
@@ -402,13 +416,16 @@ class PredictView(ctk.CTkFrame):
                 arquivo = self.file_path_var.get().replace("Arquivo selecionado: ", "")
                 total = len(self.df_resultado)
                 if 'Diagnóstico_IA' in self.df_resultado.columns:
-                    malignos = int((self.df_resultado['Diagnóstico_IA'] == 'Maligno').sum())
-                    benignos = int((self.df_resultado['Diagnóstico_IA'] == 'Benigno').sum())
+                    diagnosticos = self.df_resultado['Diagnóstico_IA']
+                    malignos = int((diagnosticos == 'Maligno').sum())
+                    benignos = int((diagnosticos == 'Benigno').sum())
+                    adiados = int((diagnosticos == ROTULO_REVISAR).sum())
                 else:
                     malignos = benignos = None
+                    adiados = 0
                 self._history_manager.save_session(
                     arquivo, modelo_escolhido, total, malignos, benignos,
-                    self._relatorio_para_historico() or None,
+                    self._relatorio_para_historico() or None, adiados,
                 )
             except Exception as e:
                 self.lbl_run_error.configure(text=f"Erro durante a inferência: {e}")
@@ -459,7 +476,32 @@ class PredictView(ctk.CTkFrame):
                      "(folhas puras): decide pelas próprias regras, sem limiar ajustável.")
         else:
             texto = politica.resumo(modelo)
+
+        # A recusa exige faixa calibrada; nem todo modelo tem uma (o KNN só
+        # consegue não errar adiando dois terços do lote — ver o script de
+        # calibração), e a Árvore não tem probabilidade para comparar.
+        if self._recusa_disponivel(modelo):
+            self.chk_adiar.configure(state="normal")
+        else:
+            self.chk_adiar.configure(state="disabled")
+            if self.var_adiar.get():
+                self.var_adiar.set(False)
+                self._ao_alternar_recusa()
+            texto += "  (Recusa indisponível para este modelo.)"
+
         self.lbl_limiar.configure(text=texto)
+
+    def _recusa_disponivel(self, modelo: str) -> bool:
+        """True se o modelo escolhido pode adiar casos incertos."""
+        politica = self.predictor.politica
+        if modelo == self.NOME_TODOS:
+            return any(politica.pode_adiar(m) for m in self.model_loader.models)
+        return politica.pode_adiar(modelo)
+
+    def _ao_alternar_recusa(self):
+        """Liga ou desliga a recusa e reflete a mudança no texto do Passo 3."""
+        self.predictor.politica.adiar_incertos = bool(self.var_adiar.get())
+        self._ao_trocar_modelo(self.model_selector.get())
 
     def _atualizar_aviso_limitrofe(self):
         """
@@ -476,6 +518,18 @@ class PredictView(ctk.CTkFrame):
             return
 
         total = len(df)
+        adiados = int((df['Decisão'] == ROTULO_REVISAR).sum())
+        if adiados:
+            # Com a recusa ligada, o adiamento substitui o aviso de limítrofe:
+            # não há decisão a rever, e sim decisão nenhuma.
+            self.lbl_limitrofe.configure(
+                text=(f"⏸ {adiados} de {total} caso(s) devolvido(s) para revisão — o modelo se "
+                      f"absteve por não ter certeza suficiente. Os outros {total - adiados} "
+                      f"receberam diagnóstico."),
+                text_color="#e67e22",
+            )
+            return
+
         limitrofes = int((df['Decisão'] == 'Limítrofe').sum())
         if limitrofes:
             self.lbl_limitrofe.configure(
@@ -965,7 +1019,7 @@ class PredictView(ctk.CTkFrame):
 
         for nome, m in metricas_por_modelo.items():
             self.tree_metricas.insert("", "end", values=(
-                nome,
+                nome, self._pct(m.get('cobertura')),
                 self._pct(m['acuracia']), self._pct(m['sensibilidade']),
                 self._pct(m['especificidade']), self._pct(m['precisao']), self._pct(m['f1']),
                 m['vp'], m['fn'], m['fp'], m['vn'],
@@ -997,7 +1051,9 @@ class PredictView(ctk.CTkFrame):
         for nome, m in metricas_por_modelo.items():
             critica = analise_critica(nome, m, metricas_por_modelo)
             linhas.append(f"■ {nome}")
-            linhas.append(f"   acurácia {self._pct(m['acuracia'])}"
+            cobertura = (f"   decidiu {m['adiados'] and self._pct(m['cobertura']) or '100.0%'} "
+                         f"do lote  ·  " if m.get('adiados') else "   ")
+            linhas.append(f"{cobertura}acurácia {self._pct(m['acuracia'])}"
                           f"  ·  sensibilidade {self._pct(m['sensibilidade'])}"
                           f"  ·  especificidade {self._pct(m['especificidade'])}"
                           f"  ·  F1 {self._pct(m['f1'])}")
@@ -1107,15 +1163,22 @@ class PredictView(ctk.CTkFrame):
             return
         try:
             total = len(self.df_resultado)
+            adiados = 0
             if 'Diagnóstico_IA' in self.df_resultado.columns:
-                malignos = int((self.df_resultado['Diagnóstico_IA'] == 'Maligno').sum())
-                benignos = total - malignos
+                diagnosticos = self.df_resultado['Diagnóstico_IA']
+                malignos = int((diagnosticos == 'Maligno').sum())
+                # Contado explicitamente, e não por diferença: com a recusa
+                # ligada há uma terceira saída, e "o resto é benigno" liberaria
+                # no relatório pacientes que o modelo não chegou a avaliar.
+                benignos = int((diagnosticos == 'Benigno').sum())
+                adiados = int((diagnosticos == ROTULO_REVISAR).sum())
             else:
                 malignos = benignos = None
             meta = {
                 'arquivo': self.file_path_var.get().replace("Arquivo selecionado: ", ""),
                 'modelo': self.model_selector.get(),
                 'total': total, 'malignos': malignos, 'benignos': benignos,
+                'adiados': adiados,
             }
             nomes_modelo = {
                 'arvore': self.NOME_ARVORE, 'logistica': self.NOME_LOGISTICA,

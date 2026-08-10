@@ -39,6 +39,7 @@ class ShapReportWindow(ctk.CTkToplevel):
 
     COR_MALIGNO = "#e74c3c"
     COR_BENIGNO = "#2ecc71"
+    COR_REVISAR = "#e67e22"   # laranja: caso devolvido para revisão humana
     COR_FUNDO = "#2b2b2b"
 
     def __init__(self, master, explainer, X_scaled, valores_reais,
@@ -111,10 +112,13 @@ class ShapReportWindow(ctk.CTkToplevel):
 
         n = len(self._pacientes)
         malignos = sum(1 for p in self._pacientes if p['classe'] == 'Maligno')
+        benignos = sum(1 for p in self._pacientes if p['classe'] == 'Benigno')
+        adiados = n - malignos - benignos
+        revisar = f"    Revisar: {adiados}" if adiados else ""
         modo = "aproximado (KernelExplainer)" if self._explainer.is_lazy else "exato (TreeExplainer)"
         ctk.CTkLabel(
             header,
-            text=(f"{n} paciente(s)   ·   Maligno: {malignos}    Benigno: {n - malignos}"
+            text=(f"{n} paciente(s)   ·   Maligno: {malignos}    Benigno: {benignos}{revisar}"
                   f"   ·   SHAP {modo}   ·   base + Σ(shap) = P(Maligno)"),
             font=ctk.CTkFont(size=13), text_color="gray",
         ).pack(anchor="w")
@@ -196,6 +200,7 @@ class ShapReportWindow(ctk.CTkToplevel):
 
         self._tree.tag_configure("Maligno", foreground=self.COR_MALIGNO)
         self._tree.tag_configure("Benigno", foreground=self.COR_BENIGNO)
+        self._tree.tag_configure("Revisar", foreground=self.COR_REVISAR)
         for i, p in enumerate(self._pacientes):
             self._tree.insert("", "end", iid=str(i),
                               values=(p['indice'], p['classe']), tags=(p['classe'],))

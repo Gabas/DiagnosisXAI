@@ -42,6 +42,11 @@ import os
 ROTULO_MALIGNO = 'Maligno'
 ROTULO_BENIGNO = 'Benigno'
 
+# Terceira saída possível: o sistema se recusa a decidir e devolve o caso ao
+# médico. Não é um diagnóstico intermediário ("talvez maligno") — é a ausência
+# deliberada de diagnóstico, para os casos em que decidir seria adivinhar.
+ROTULO_REVISAR = 'Revisar'
+
 # Limiar usado quando não há um limiar calibrado para o modelo — o comportamento
 # padrão de ``predict()`` do scikit-learn.
 LIMIAR_NEUTRO = 0.5
@@ -54,6 +59,7 @@ BANDA_PADRAO = 0.10
 
 ZONA_LIMITROFE = 'Limítrofe'
 ZONA_DEFINIDA = 'Definida'
+ZONA_REVISAO = ROTULO_REVISAR
 
 # Nome do comitê no seletor de modelos. Vive aqui (e não no PredictorEngine)
 # porque tanto a política quanto o motor de inferência precisam dele.
@@ -93,22 +99,33 @@ class PoliticaDecisao:
     banda : float, optional
         Meia-largura da faixa de revisão em torno do limiar (padrão 0,10).
     metadados : dict ou None, optional
-        Procedência dos limiares (alvo de sensibilidade, data de geração,
-        método) — exibida na interface para que a decisão seja auditável.
+        Procedência dos limiares (critério, data de geração, desempenho medido)
+        — exibida na interface para que a decisão seja auditável.
+    faixas_revisao : dict ou None, optional
+        ``{modelo: (inferior, superior)}`` — faixa de probabilidade em que o
+        modelo se abstém, quando ``adiar_incertos`` está ligado.
 
     Attributes
     ----------
     calibrada : bool
         True quando há pelo menos um limiar diferente do neutro, isto é,
         quando ``data/limiares.json`` foi carregado.
+    adiar_incertos : bool
+        Liga a recusa: em vez de um rótulo, os casos dentro da faixa recebem
+        ``'Revisar'``. Começa desligado — trata-se de uma decisão de operação
+        (aceitar devolver parte dos casos ao médico), não de um detalhe técnico,
+        e portanto cabe a quem opera, não ao padrão do programa.
     """
 
     def __init__(self, limiares: dict = None, banda: float = BANDA_PADRAO,
-                 metadados: dict = None):
-        """Guarda os limiares por modelo e a largura da faixa de revisão."""
+                 metadados: dict = None, faixas_revisao: dict = None):
+        """Guarda os limiares por modelo, a faixa de revisão e a de recusa."""
         self._limiares = {k: float(v) for k, v in (limiares or {}).items()}
+        self._faixas = {k: (float(v[0]), float(v[1]))
+                        for k, v in (faixas_revisao or {}).items() if v}
         self.banda = float(banda)
         self.metadados = dict(metadados or {})
+        self.adiar_incertos = False
 
     @property
     def calibrada(self) -> bool:
@@ -146,17 +163,44 @@ class PoliticaDecisao:
         return cls(
             limiares=dados.get('limiares'),
             banda=dados.get('banda_revisao', BANDA_PADRAO),
+            faixas_revisao=dados.get('faixas_recusa'),
             metadados={k: v for k, v in dados.items()
-                       if k not in ('limiares', 'banda_revisao')},
+                       if k not in ('limiares', 'banda_revisao', 'faixas_recusa')},
         )
 
     def limiar(self, modelo: str) -> float:
         """Limiar de operação do modelo, em probabilidade (0–1)."""
         return self._limiares.get(modelo, LIMIAR_NEUTRO)
 
+    def faixa_recusa(self, modelo: str):
+        """
+        Faixa de probabilidade em que o modelo se abstém, ou None.
+
+        Returns
+        -------
+        tuple[float, float] ou None
+            ``(inferior, superior)``: abaixo do inferior o caso é decidido como
+            Benigno; do superior para cima, como Maligno; entre os dois, o
+            sistema não decide. ``None`` quando o modelo não tem faixa
+            calibrada — nesse caso a recusa não se aplica a ele.
+        """
+        return self._faixas.get(modelo)
+
+    def pode_adiar(self, modelo: str) -> bool:
+        """True se o modelo tem faixa de recusa calibrada."""
+        return self.faixa_recusa(modelo) is not None
+
+    def _adiando(self, modelo: str):
+        """Faixa em vigor agora (None quando a recusa está desligada)."""
+        return self.faixa_recusa(modelo) if self.adiar_incertos else None
+
     def rotular(self, prob: float, modelo: str) -> str:
         """
         Classe atribuída a uma probabilidade calibrada de malignidade.
+
+        Com a recusa ligada, a decisão deixa de ser um corte único: abaixo da
+        faixa é Benigno, acima é Maligno, e dentro dela o sistema devolve
+        ``'Revisar'`` em vez de arriscar um palpite.
 
         Parameters
         ----------
@@ -165,20 +209,41 @@ class PoliticaDecisao:
         modelo : str
             Nome do modelo, para resolver o limiar.
         """
+        faixa = self._adiando(modelo)
+        if faixa is not None:
+            inferior, superior = faixa
+            if prob < inferior:
+                return ROTULO_BENIGNO
+            if prob >= superior:
+                return ROTULO_MALIGNO
+            return ROTULO_REVISAR
+
         return ROTULO_MALIGNO if prob >= self.limiar(modelo) else ROTULO_BENIGNO
 
     def zona(self, prob: float, modelo: str) -> str:
         """
-        Classifica a decisão como ``'Limítrofe'`` ou ``'Definida'``.
+        Classifica a decisão como ``'Revisar'``, ``'Limítrofe'`` ou ``'Definida'``.
 
         Limítrofe significa que a probabilidade está a menos de ``banda`` do
         limiar de operação — perto o bastante para que a decisão vire com uma
-        variação pequena, e portanto merecedora de revisão humana.
+        variação pequena, e portanto merecedora de revisão humana. Revisar é o
+        caso mais forte: nem sequer houve decisão a rever.
         """
+        if self.rotular(prob, modelo) == ROTULO_REVISAR:
+            return ZONA_REVISAO
         return ZONA_LIMITROFE if abs(prob - self.limiar(modelo)) <= self.banda else ZONA_DEFINIDA
 
     def resumo(self, modelo: str) -> str:
         """Frase curta descrevendo o ponto de operação, para exibir na interface."""
+        faixa = self._adiando(modelo)
+        if faixa is not None:
+            cobertura = (self.metadados.get('cobertura_treino') or {}).get(modelo)
+            medido = (f" No treino, decidiu {cobertura:.0f}% dos casos sem errar nenhum."
+                      if isinstance(cobertura, (int, float)) else "")
+            return (f"Recusa ligada: decide Benigno abaixo de {faixa[0] * 100:.1f}% e Maligno "
+                    f"a partir de {faixa[1] * 100:.1f}%; entre os dois, devolve o caso para "
+                    f"revisão em vez de arriscar.{medido}")
+
         limiar = self.limiar(modelo)
         if abs(limiar - LIMIAR_NEUTRO) <= 1e-9:
             return "Limiar de decisão: 50% (padrão, sem calibração de operação)."
@@ -240,7 +305,13 @@ def aplicar_a_explicacoes(explicacoes: list, probabilidades, politica: PoliticaD
     for explicacao, prob in zip(explicacoes, probabilidades):
         p = float(prob)
         classe = politica.rotular(p, modelo)
-        confianca = p if classe == ROTULO_MALIGNO else 1.0 - p
+        if classe == ROTULO_REVISAR:
+            # Sem classe decidida não há "confiança na decisão"; exibe-se a
+            # confiança no lado para o qual o modelo pendeu — insuficiente,
+            # que é justamente o motivo de o caso ter sido devolvido.
+            confianca = max(p, 1.0 - p)
+        else:
+            confianca = p if classe == ROTULO_MALIGNO else 1.0 - p
 
         explicacao['classe'] = classe
         explicacao['limitrofe'] = politica.zona(p, modelo) == ZONA_LIMITROFE

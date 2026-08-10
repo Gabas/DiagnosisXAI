@@ -189,6 +189,14 @@ class HistoryView(ctk.CTkFrame):
                 font=ctk.CTkFont(size=12), text_color="#2ecc71",
             ).pack(side="left")
 
+            # Sessões com a recusa ligada: sem esta parcela os números da linha
+            # não somam o total do lote.
+            if entry.get('adiados'):
+                ctk.CTkLabel(
+                    row3, text=f"  |  Revisar: {entry['adiados']}",
+                    font=ctk.CTkFont(size=12), text_color="#e67e22",
+                ).pack(side="left")
+
         # Linha 4: acurácia (disponível somente após a etapa de auditoria)
         acuracia = entry.get('acuracia')
         if acuracia:

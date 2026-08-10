@@ -38,6 +38,7 @@ class RandomForestReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
 
     COR_MALIGNO = "#e74c3c"
     COR_BENIGNO = "#2ecc71"
+    COR_REVISAR = "#e67e22"   # laranja: caso devolvido para revisão humana
     COR_FUNDO = "#2b2b2b"
 
     def __init__(self, master, importancias: list, explicacoes: list,
@@ -99,11 +100,14 @@ class RandomForestReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
 
         n = len(self._explicacoes)
         malignos = sum(1 for e in self._explicacoes if e['classe'] == 'Maligno')
+        benignos = sum(1 for e in self._explicacoes if e['classe'] == 'Benigno')
+        adiados = n - malignos - benignos
+        revisar = f"    Revisar: {adiados}" if adiados else ""
         limitrofes = sum(1 for e in self._explicacoes if e['limitrofe'])
         ctk.CTkLabel(
             header,
             text=(f"Random Forest ({self._n_arvores} árvores)   ·   {n} paciente(s)   ·   "
-                  f"Maligno: {malignos}    Benigno: {n - malignos}   ·   "
+                  f"Maligno: {malignos}    Benigno: {benignos}{revisar}   ·   "
                   f"Casos limítrofes: {limitrofes}"),
             font=ctk.CTkFont(size=13), text_color="gray",
         ).pack(anchor="w")
@@ -268,6 +272,7 @@ class RandomForestReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
 
         self._tree.tag_configure("Maligno", foreground=self.COR_MALIGNO)
         self._tree.tag_configure("Benigno", foreground=self.COR_BENIGNO)
+        self._tree.tag_configure("Revisar", foreground=self.COR_REVISAR)
 
         for e in explicacoes:
             voto = f"{e['votos_maligno']} / {e['votos_benigno']}"

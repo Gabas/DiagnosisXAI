@@ -164,6 +164,32 @@ def test_predict_todos_gera_uma_coluna_ia_por_modelo(loader, lote_processado):
     assert len(colunas_ia) == 5
 
 
+def test_recusa_produz_tres_saidas_e_nao_perde_ninguem(loader, lote_processado):
+    """Com a recusa ligada, o lote se divide em decididos e devolvidos."""
+    df_scaled, df_raw = lote_processado
+    politica = PoliticaDecisao({'SVM': 0.15}, faixas_revisao={'SVM': (0.01, 0.70)})
+    politica.adiar_incertos = True
+    resultado = PredictorEngine(loader, politica).predict(df_scaled, df_raw, 'SVM')
+
+    diagnosticos = resultado['Diagnóstico_IA']
+    assert set(diagnosticos.unique()) <= {'Maligno', 'Benigno', 'Revisar'}
+    assert (diagnosticos == 'Revisar').any()
+    assert len(diagnosticos) == len(df_scaled)
+    # Quem foi devolvido está dentro da faixa; quem foi decidido, fora dela.
+    adiado = diagnosticos == 'Revisar'
+    certeza = resultado['Certeza_Maligno(%)']
+    assert certeza[adiado].between(1.0, 70.0, inclusive="left").all()
+    assert not certeza[~adiado].between(1.0, 70.0, inclusive="left").any()
+
+
+def test_recusa_desligada_nao_muda_nada(loader, lote_processado):
+    """A recusa é opcional: desligada, o resultado é o de antes dela existir."""
+    df_scaled, df_raw = lote_processado
+    politica = PoliticaDecisao({'SVM': 0.15}, faixas_revisao={'SVM': (0.01, 0.70)})
+    resultado = PredictorEngine(loader, politica).predict(df_scaled, df_raw, 'SVM')
+    assert set(resultado['Diagnóstico_IA'].unique()) <= {'Maligno', 'Benigno'}
+
+
 def test_predict_modelo_invalido_levanta_erro(loader, lote_processado):
     df_scaled, df_raw = lote_processado
     engine = PredictorEngine(loader)

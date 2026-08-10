@@ -31,6 +31,7 @@ class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
 
     COR_MALIGNO = "#e74c3c"
     COR_BENIGNO = "#2ecc71"
+    COR_REVISAR = "#e67e22"   # laranja: caso devolvido para revisão humana
 
     def __init__(self, master, importancias: list, explicacoes: list, **kwargs):
         """
@@ -85,11 +86,13 @@ class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
 
         n = len(self._explicacoes)
         malignos = sum(1 for e in self._explicacoes if e['classe'] == 'Maligno')
-        benignos = n - malignos
+        benignos = sum(1 for e in self._explicacoes if e['classe'] == 'Benigno')
+        adiados = n - malignos - benignos
+        revisar = f"    Revisar: {adiados}" if adiados else ""
         ctk.CTkLabel(
             header,
             text=(f"Árvore de Decisão   ·   {n} paciente(s)   ·   "
-                  f"Maligno: {malignos}    Benigno: {benignos}"),
+                  f"Maligno: {malignos}    Benigno: {benignos}{revisar}"),
             font=ctk.CTkFont(size=13), text_color="gray",
         ).pack(anchor="w")
 
@@ -204,6 +207,7 @@ class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
 
         self._tree.tag_configure("Maligno", foreground=self.COR_MALIGNO)
         self._tree.tag_configure("Benigno", foreground=self.COR_BENIGNO)
+        self._tree.tag_configure("Revisar", foreground=self.COR_REVISAR)
 
         for e in explicacoes:
             principais = ", ".join(c['feature'] for c in e['contribuicoes'][:2]) or "—"

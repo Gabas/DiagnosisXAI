@@ -188,3 +188,64 @@ def test_ressalvas_do_lote_citam_o_limiar_de_operacao_em_vigor():
 
 def test_ressalvas_do_lote_sem_metricas():
     assert ressalvas_do_lote({}) == []
+
+
+# --- Casos devolvidos para revisão (opção de recusa) ---
+
+def _lote_com_recusa(vp, fn, fp, vn, adiados_malignos=0, adiados_benignos=0):
+    """(reais, previstos) com uma parte dos pacientes devolvida para revisão."""
+    reais, previstos = _lote(vp, fn, fp, vn)
+    reais += [MALIGNO] * adiados_malignos + [BENIGNO] * adiados_benignos
+    previstos += ['Revisar'] * (adiados_malignos + adiados_benignos)
+    return reais, previstos
+
+
+def test_adiados_ficam_fora_da_matriz_de_confusao():
+    """Não há decisão a pontuar: contá-los puniria a cautela ou premiaria a omissão."""
+    m = calcular_metricas(*_lote_com_recusa(vp=10, fn=0, fp=0, vn=10,
+                                            adiados_malignos=3, adiados_benignos=2))
+    assert (m['vp'], m['fn'], m['fp'], m['vn']) == (10, 0, 0, 10)
+    assert m['sensibilidade'] == 100.0
+    assert m['especificidade'] == 100.0
+    assert m['adiados'] == 5
+    assert m['adiados_malignos'] == 3
+    assert m['n'] == 20 and m['total'] == 25
+    assert m['cobertura'] == pytest.approx(80.0)
+
+
+def test_sem_recusa_a_cobertura_e_total():
+    m = calcular_metricas(*_lote(vp=5, fn=1, fp=1, vn=5))
+    assert m['cobertura'] == 100.0
+    assert m['adiados'] == 0
+
+
+def test_critica_cobra_a_cobertura_de_quem_se_absteve():
+    metricas = {'SVM': calcular_metricas(*_lote_com_recusa(vp=10, fn=0, fp=0, vn=10,
+                                                           adiados_malignos=3, adiados_benignos=2))}
+    critica = analise_critica('SVM', metricas['SVM'], metricas)
+    assert any('não errou nenhum' in f.lower() for f in critica['fortes'])
+    assert any('80.0%' in r and '5 paciente' in r for r in critica['ressalvas'])
+    assert 'decidiu' in critica['veredito']
+
+
+def test_critica_denuncia_recusa_que_nao_isola_os_dificeis():
+    """Abster-se e ainda assim errar é o pior dos mundos — precisa aparecer."""
+    metricas = {'SVM': calcular_metricas(*_lote_com_recusa(vp=8, fn=2, fp=1, vn=9,
+                                                           adiados_benignos=5))}
+    critica = analise_critica('SVM', metricas['SVM'], metricas)
+    assert 'não está isolando os casos difíceis' in critica['veredito']
+
+
+def test_ressalvas_avisam_que_cobertura_muda_a_leitura():
+    metricas = {'SVM': calcular_metricas(*_lote_com_recusa(vp=50, fn=0, fp=0, vn=50,
+                                                           adiados_malignos=3, adiados_benignos=3))}
+    avisos = ressalvas_do_lote(metricas)
+    assert any('cobertura' in a for a in avisos)
+
+
+def test_composicao_do_lote_conta_os_adiados():
+    """A composição descreve os dados, não o que o modelo escolheu decidir."""
+    metricas = {'SVM': calcular_metricas(*_lote_com_recusa(vp=4, fn=0, fp=0, vn=4,
+                                                           adiados_malignos=2, adiados_benignos=2))}
+    avisos = ressalvas_do_lote(metricas)
+    assert any('12 pacientes: 6 malignos, 6 benignos' in a for a in avisos)

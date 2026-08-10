@@ -23,7 +23,20 @@ from bokeh.resources import INLINE
 
 COR_MALIGNO = "#e74c3c"
 COR_BENIGNO = "#2ecc71"
+COR_REVISAR = "#e67e22"
 COR_FUNDO = "#2b2b2b"
+
+
+def _cor(classe) -> str:
+    """
+    Cor do ponto conforme a decisão do modelo sobre aquele paciente.
+
+    Com a recusa ligada existe uma terceira saída ("Revisar"), que não pode
+    herdar a cor de Benigno: no mapa, um caso não decidido pareceria liberado.
+    """
+    if classe == "Maligno":
+        return COR_MALIGNO
+    return COR_REVISAR if classe == "Revisar" else COR_BENIGNO
 
 
 def _tema_escuro(fig):
@@ -113,7 +126,7 @@ def gerar_mapa_html(train_2d, train_y, batch_2d, pacientes: list, caminho_saida:
         certeza=[_campo(p, "certeza") for p in pacientes],
         perfil=[_campo(p, "perfil") for p in pacientes],
         decisao=[_campo(p, "decisao") for p in pacientes],
-        cor=[COR_MALIGNO if p.get("classe") == "Maligno" else COR_BENIGNO for p in pacientes],
+        cor=[_cor(p.get("classe")) for p in pacientes],
     ))
     r_batch = fig.scatter("x", "y", source=src_batch, size=13, marker="diamond",
                           color="cor", line_color="white", line_width=1.0,
@@ -192,7 +205,7 @@ def gerar_margem_svm_html(explicacoes: list, caminho_saida: str = None) -> str:
         classe=[str(e.get('classe', '—')) for e in explicacoes],
         confianca=[f"{e.get('confianca', 0):.0f}%" for e in explicacoes],
         z=[f"{x:+.2f}" for x in xs],
-        cor=[COR_MALIGNO if e.get('classe') == 'Maligno' else COR_BENIGNO for e in explicacoes],
+        cor=[_cor(e.get('classe')) for e in explicacoes],
     ))
     r = fig.scatter("x", "y", source=src, size=12, color="cor",
                     line_color="white", line_width=0.8)

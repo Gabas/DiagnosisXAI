@@ -19,6 +19,7 @@ matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
+from views.report_common import cor_da_classe
 from utils.ui import (ScrollableFrame, ajustar_ao_conteudo, bind_treeview_mousewheel,
                       figura_responsiva, itens_visiveis, responsive_geometry)
 
@@ -39,6 +40,7 @@ class UmapMapWindow(ctk.CTkToplevel):
 
     COR_MALIGNO = "#e74c3c"
     COR_BENIGNO = "#2ecc71"
+    COR_REVISAR = "#e67e22"   # laranja: caso devolvido para revisão humana
     COR_FUNDO = "#2b2b2b"
 
     def __init__(self, master, train_2d, train_y, batch_2d, pacientes: list, **kwargs):
@@ -99,10 +101,13 @@ class UmapMapWindow(ctk.CTkToplevel):
         ).pack(anchor="w")
         n = len(self._pacientes)
         malignos = sum(1 for p in self._pacientes if p['classe'] == 'Maligno')
+        benignos = sum(1 for p in self._pacientes if p['classe'] == 'Benigno')
+        adiados = n - malignos - benignos
+        revisar = f"    Revisar: {adiados}" if adiados else ""
         ctk.CTkLabel(
             header,
             text=(f"{n} paciente(s) do lote sobre a população de treino   ·   "
-                  f"Maligno: {malignos}    Benigno: {n - malignos}"),
+                  f"Maligno: {malignos}    Benigno: {benignos}{revisar}"),
             font=ctk.CTkFont(size=13), text_color="gray",
         ).pack(anchor="w")
 
@@ -137,7 +142,7 @@ class UmapMapWindow(ctk.CTkToplevel):
                          alpha=0.22, edgecolors="none", zorder=1)
 
         bt = self._batch_2d
-        cores = [self.COR_MALIGNO if p['classe'] == 'Maligno' else self.COR_BENIGNO
+        cores = [cor_da_classe(p['classe'])
                  for p in self._pacientes]
         self._ax.scatter(bt[:, 0], bt[:, 1], c=cores, s=42, marker="D",
                          edgecolors="white", linewidths=0.6, zorder=3)
@@ -204,6 +209,7 @@ class UmapMapWindow(ctk.CTkToplevel):
 
         self._tree.tag_configure("Maligno", foreground=self.COR_MALIGNO)
         self._tree.tag_configure("Benigno", foreground=self.COR_BENIGNO)
+        self._tree.tag_configure("Revisar", foreground=self.COR_REVISAR)
         for i, p in enumerate(self._pacientes):
             self._tree.insert("", "end", iid=str(i),
                               values=(p['indice'], p['classe']), tags=(p['classe'],))

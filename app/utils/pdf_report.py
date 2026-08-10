@@ -124,6 +124,8 @@ def export_batch_report(path: str, meta: dict, df, importancias_por_modelo: dict
         ["Maligno", str(meta.get('malignos', '—'))],
         ["Benigno", str(meta.get('benignos', '—'))],
     ]
+    if meta.get('adiados'):
+        resumo.append(["Devolvidos para revisão", str(meta['adiados'])])
     t = Table(resumo, colWidths=[5 * cm, 11 * cm])
     t.setStyle(TableStyle([
         ('FONTSIZE', (0, 0), (-1, -1), 10),
