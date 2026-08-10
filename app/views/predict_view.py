@@ -10,6 +10,7 @@ import pandas as pd
 
 from core.batch_processor import BatchProcessor
 from core.biomarkers import descricao_coluna
+from core.committee import explicar as explicar_comite
 from core.decision import ROTULO_REVISAR, aplicar_a_explicacoes
 from core.history_manager import HistoryManager
 from core.inference import ModelLoader
@@ -18,6 +19,7 @@ from core.predictor import PredictorEngine
 from utils.ui import ScrollableFrame, bind_treeview_mousewheel, HeadingTooltip
 from utils.pdf_report import export_batch_report, resolve_reports_dir
 from views.report_window import ReportWindow
+from views.report_window_comite import ComiteReportWindow
 from views.report_window_lr import LogisticReportWindow
 from views.report_window_knn import KNNReportWindow
 from views.report_window_rf import RandomForestReportWindow
@@ -51,6 +53,7 @@ class PredictView(ctk.CTkFrame):
         'knn': KNNReportWindow,
         'randomforest': RandomForestReportWindow,
         'svm': SVMReportWindow,
+        'comite': ComiteReportWindow,
     }
 
     # Nome do modelo (no seletor) <-> chave curta usada no SHAP.
@@ -109,6 +112,7 @@ class PredictView(ctk.CTkFrame):
 
     # Rótulos exibidos no menu de relatórios do Passo 5.
     _ROTULOS_RELATORIO = {
+        'comite': "Comitê — concordância dos membros",
         'arvore': "Árvore de Decisão — regras",
         'logistica': "Regressão Logística — contribuições",
         'knn': "KNN — vizinhos",
@@ -619,7 +623,9 @@ class PredictView(ctk.CTkFrame):
         if modelo_escolhido == self.NOME_TODOS:
             return set(self.model_loader.models)
         if modelo_escolhido == self.predictor.NOME_COMITE:
-            return set(self.predictor.membros_comite())
+            # O comitê explica a si mesmo (a concordância entre os membros) e
+            # empresta os relatórios individuais para detalhar cada membro.
+            return set(self.predictor.membros_comite()) | {self.predictor.NOME_COMITE}
         return {modelo_escolhido}
 
     def _gerar_exato(self, tipo: str, nome_modelo: str, funcao):
@@ -682,6 +688,15 @@ class PredictView(ctk.CTkFrame):
 
         # Cada explicador é isolado: se um estiver indisponível (ex.: .pkl antigo
         # com bug), os demais relatórios continuam funcionando.
+        # O comitê não vem do .pkl: é explicado a partir das probabilidades dos
+        # membros, que acabaram de ser calculadas acima.
+        comite = self.predictor.NOME_COMITE
+        if comite in alvos:
+            membros = self.predictor.membros_comite()
+            self._gerar_exato('comite', comite, lambda: explicar_comite(
+                {m: self._probabilidades[m] for m in membros},
+                list(self.df_padronizado.index), self.predictor.politica, comite))
+
         exp = explicadores.get('arvore')
         if exp is not None and self.NOME_ARVORE in alvos:
             self._gerar_exato('arvore', self.NOME_ARVORE, lambda: {
@@ -725,7 +740,7 @@ class PredictView(ctk.CTkFrame):
 
         # Monta as opções do menu: exatos primeiro, depois SHAP.
         opcoes = {}
-        for tipo in ('arvore', 'logistica', 'knn', 'randomforest', 'svm'):
+        for tipo in ('comite', 'arvore', 'logistica', 'knn', 'randomforest', 'svm'):
             if tipo in self._ultima_explicacao:
                 opcoes[self._ROTULOS_RELATORIO[tipo]] = tipo
         for key in self._shap_disponiveis:

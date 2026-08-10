@@ -8,6 +8,7 @@ from core.history_manager import HistoryManager
 from utils.ui import ScrollableFrame, responsive_geometry
 from views import report_launchers
 from views.report_window import ReportWindow
+from views.report_window_comite import ComiteReportWindow
 from views.report_window_lr import LogisticReportWindow
 from views.report_window_knn import KNNReportWindow
 from views.report_window_rf import RandomForestReportWindow
@@ -292,6 +293,7 @@ class SessionDetailWindow(ctk.CTkToplevel):
         'knn': ("KNN", KNNReportWindow),
         'randomforest': ("Random Forest", RandomForestReportWindow),
         'svm': ("SVM", SVMReportWindow),
+        'comite': ("Comitê (voto suave)", ComiteReportWindow),
     }
 
     def __init__(self, master, entry: dict, **kwargs):
