@@ -60,7 +60,7 @@ class RandomForestReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             Argumentos adicionais para o construtor do CTkToplevel.
         """
         super().__init__(master, **kwargs)
-        self.title("Relatório de Explicabilidade — Random Forest")
+        self.title("Relatório de Explicabilidade: Random Forest")
         responsive_geometry(self, 1060, 840)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -343,7 +343,7 @@ class RandomForestReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         if e['limitrofe']:
             linhas.append("")
             linhas.append("⚠ Caso limítrofe: a floresta está pouco decidida.")
-            linhas.append("  As árvores se dividem perto do limiar — recomenda-se")
+            linhas.append("  As árvores se dividem perto do limiar. Recomenda-se")
             linhas.append("  revisão clínica deste paciente.")
         else:
             linhas.append("")

@@ -78,7 +78,7 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             Argumentos adicionais para o construtor do CTkToplevel.
         """
         super().__init__(master, **kwargs)
-        self.title("Relatório de Explicabilidade — SVM")
+        self.title("Relatório de Explicabilidade: SVM")
         responsive_geometry(self, 1060, 860)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -465,7 +465,7 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
 
         linhas.append("")
         linhas.append("Balanço de forças (soma ponderada da similaridade com os")
-        linhas.append("vetores de suporte — decide a soma, não um único fator):")
+        linhas.append("vetores de suporte, porque decide a soma e não um único fator):")
         linhas.append(f"   A favor de Maligno   ({self._n_sv_mal} vetores):  +{e['forca_maligno']:.3f}")
         linhas.append(f"   A favor de Benigno   ({self._n_sv_ben} vetores):  -{e['forca_benigno']:.3f}")
         linhas.append(f"   Viés do modelo:                    {e['vies']:+.3f}")
@@ -487,7 +487,7 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         linhas.append("")
         linhas.append(
             "Nota: o SVM (kernel RBF) não tem um \"hiperplano\" no espaço original\n"
-            "dos 30 biomarcadores — a decisão soma a similaridade deste paciente com\n"
+            "dos 30 biomarcadores. A decisão soma a similaridade deste paciente com\n"
             "TODOS os vetores de suporte (não só os listados acima); os valores de\n"
             "\"a favor de\" já incluem essa soma completa de cada lado."
         )

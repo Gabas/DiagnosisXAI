@@ -294,20 +294,50 @@ As probabilidades **recalibradas** (Seção 14) alimentam a coluna "Certeza (%)"
 
 Além do diagnóstico, o App comunica **quando confiar menos na previsão** — princípio central da IA explicável aplicada ao apoio à decisão clínica. Para cada paciente, a tabela de resultados (e os arquivos CSV/PDF exportados) traz:
 
-| Coluna | O que informa |
-|---|---|
-| `Diagnóstico_IA` | Classe prevista (Maligno/Benigno) pelo modelo selecionado |
-| `Certeza_Maligno(%)` | Probabilidade **calibrada** de malignidade (0–100%) |
-| `Decisão` | `Limítrofe` quando a certeza está perto de 50% (decisão incerta); senão `Definida` |
-| `Perfil` | `Atípico` quando o paciente está fora da distribuição de treino; senão `Típico` |
+| Coluna | Pergunta que responde | O que informa |
+|---|---|---|
+| `Diagnóstico_IA` | *O quê?* | O que o sistema entrega: `Maligno`, `Benigno` ou `Revisar` (abstenção) |
+| `Certeza_Maligno(%)` | *Com quanta evidência?* | Probabilidade **calibrada** de malignidade (0–100%) |
+| `Zona_de_Decisão` | *Quão firme?* | `Definida`, `Limítrofe` ou `Revisar` — em que faixa da régua a certeza caiu |
+| `Perfil` | *A evidência vale?* | `Atípico` quando o paciente está fora da distribuição de treino; senão `Típico` |
 
-As três últimas formam um **trio de confiabilidade** complementar:
+### A régua de decisão
+
+O Passo 3 mostra, por extenso, **como o modelo selecionado decide** — e por quê. São três faixas contíguas que cobrem 0–100%, com a do meio sendo exatamente o intervalo em que a decisão é incerta:
+
+| Resultado | Faixa de certeza (ex.: Comitê) | O que o sistema faz |
+|---|---|---|
+| Benigno | `< 1,1%` | decide Benigno, com folga |
+| Revisar | `1,1% a 68,2%` | não decide — devolve o caso para revisão humana |
+| Maligno | `≥ 68,2%` | decide Maligno, com folga |
+
+A faixa do meio muda conforme o modo de operação:
+
+- **Adiar casos incertos ligado (padrão)** — a faixa é a de recusa: `1,1%` é a menor certeza que um paciente maligno recebeu no treino e `68,2%` a maior que um benigno recebeu (probabilidades *out-of-fold*). Fora desses limites, nenhum caso do treino seria decidido errado.
+- **Desligado** — a faixa é o limiar de operação ±10 pontos, e ali o sistema decide mas marca o caso como `Limítrofe`.
+
+**Por que a recusa é o padrão:** o erro que este sistema existe para evitar é o falso negativo. Chamar de benigno um tumor maligno manda o paciente para casa sem qualquer sinal de alerta, e o custo aparece meses depois. Diante de uma probabilidade que não separa as classes, arriscar um palpite não é neutro — é escolher esse risco. Quem opera pode desligar a recusa e receber um rótulo para todos os casos, mas isso passa a ser uma decisão consciente. Modelos sem faixa calibrada (KNN e Árvore de Decisão) não oferecem a opção e decidem todos os casos.
+
+O painel também exibe o **motivo do corte** (critério, dados usados e desempenho medido), e a régua acompanha o lote nos PDFs exportados — sem ela, uma linha "Maligno, certeza 25%" não seria conferível fora do App.
+
+### O trio de confiabilidade
 
 1. **Calibração** — a certeza exibida corresponde à frequência real de malignidade (validada por escore de Brier e ECE; recalibração por escalonamento de Platt, Seção 14 do notebook). Sem isso, "90%" pode não significar 90%.
 2. **Aviso de perfil atípico (*out-of-distribution*)** — mede a distância de **Mahalanobis** (covariância regularizada de Ledoit-Wolf) do paciente ao centro do treino, no espaço completo dos 30 atributos padronizados. Acima do percentil 99 do treino, o perfil é marcado como atípico: o modelo está extrapolando para uma região pouco vista. *(A projeção UMAP 2D não é usada aqui — reduzir a 2D descartaria justamente a informação necessária para julgar atipicidade.)*
-3. **Flag de caso limítrofe** — como a certeza é calibrada, uma probabilidade a ±10 pontos de 50% reflete incerteza real de decisão: um pequeno deslocamento inverteria o diagnóstico. Esses casos são sinalizados para revisão humana.
+3. **Zona de decisão** — como a certeza é calibrada, a distância até o corte reflete incerteza real: dentro da faixa incerta, um pequeno deslocamento inverteria o diagnóstico. Esses casos são devolvidos (`Revisar`) ou, com a recusa desligada, sinalizados (`Limítrofe`).
 
-> Em conjunto, esses sinais permitem ao sistema não apenas prever, mas **avisar quando a previsão é menos confiável** — seja porque a decisão em si é incerta (limítrofe), seja porque o próprio paciente é atípico em relação ao que o modelo aprendeu (OOD).
+> Em conjunto, esses sinais permitem ao sistema não apenas prever, mas **avisar quando a previsão é menos confiável** — seja porque a decisão em si é incerta (a certeza caiu na faixa do meio), seja porque o próprio paciente é atípico em relação ao que o modelo aprendeu (OOD).
+
+### Memorial de cálculo (in-app)
+
+A aba **Sobre** traz o card **"Como os números são calculados"**: de onde vem cada valor que o sistema exibe, com a fórmula literal ao lado. Abre justamente pela distinção que a interface provoca com mais frequência — **as duas porcentagens do programa**:
+
+| | O que é | Natureza |
+|---|---|---|
+| `Certeza_Maligno(%)` | probabilidade calibrada daquele paciente | medida **no paciente**, muda linha a linha |
+| Os cortes da régua | onde o modelo decide cortar | escolhidos **no treino**, fixos para todo o lote |
+
+Confundi-las leva a comparar uma certeza de 18% com 50% e concluir "Benigno" onde o sistema decidiu "Maligno". Em seguida o card percorre, na ordem dos Passos 1 a 5: padronização Z-score, calibração de Platt, a régua (limiar, faixa de recusa e banda — e quais são medidos e qual é convenção), a distância de Mahalanobis do perfil atípico, as métricas da auditoria com o intervalo de Wilson, e a matemática de cada explicador. O conteúdo é fonte única em [`app/core/calculos.py`](app/core/calculos.py), com testes que comparam os números citados no texto com os que o código realmente usa.
 
 ### Glossário de biomarcadores (in-app)
 

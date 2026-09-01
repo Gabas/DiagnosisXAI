@@ -26,11 +26,18 @@ MEMBROS = ('Regressão Logística', 'Random Forest', 'SVM', 'KNN')
 
 @pytest.fixture
 def politica():
-    """Todos os membros e o comitê com limiar 0,15; recusa em [0,01; 0,70)."""
+    """Membros e comitê com limiar 0,15 e recusa em [0,01; 0,70) — ligada, como no app."""
     return PoliticaDecisao(
         {m: 0.15 for m in MEMBROS} | {COMITE: 0.15}, banda=0.10,
         faixas_revisao={COMITE: (0.01, 0.70)},
     )
+
+
+@pytest.fixture
+def sem_recusa(politica):
+    """A mesma política com a recusa desligada — o comitê volta a decidir tudo."""
+    politica.adiar_incertos = False
+    return politica
 
 
 def _explicar(politica, *colunas):
@@ -39,8 +46,8 @@ def _explicar(politica, *colunas):
     return explicar(probabilidades, range(len(colunas)), politica, COMITE)['explicacoes']
 
 
-def test_media_dos_membros_e_a_decisao_do_comite(politica):
-    (e,) = _explicar(politica, (0.10, 0.20, 0.30, 0.40))
+def test_media_dos_membros_e_a_decisao_do_comite(sem_recusa):
+    (e,) = _explicar(sem_recusa, (0.10, 0.20, 0.30, 0.40))
     assert e['probabilidade'] == 25.0
     assert e['classe'] == 'Maligno'
     assert e['votos_maligno'] == 3      # 0,20 / 0,30 / 0,40 acima de 0,15
@@ -61,7 +68,6 @@ def test_maioria_quando_um_membro_diverge(politica):
 
 def test_discordancia_quando_os_membros_se_dividem(politica):
     """A média cai na faixa por cancelamento — não porque alguém esteja em dúvida."""
-    politica.adiar_incertos = True
     (e,) = _explicar(politica, (0.95, 0.02, 0.90, 0.03))
     assert e['classe'] == 'Revisar'
     assert e['motivo'] == MOTIVO_DISCORDANCIA
@@ -69,7 +75,6 @@ def test_discordancia_quando_os_membros_se_dividem(politica):
 
 
 def test_fronteira_quando_a_media_fica_em_cima_do_limiar(politica):
-    politica.adiar_incertos = True
     (e,) = _explicar(politica, (0.16, 0.17, 0.15, 0.18))
     assert e['classe'] == 'Revisar'
     assert e['motivo'] == MOTIVO_FRONTEIRA
@@ -77,7 +82,6 @@ def test_fronteira_quando_a_media_fica_em_cima_do_limiar(politica):
 
 def test_cautela_quando_os_membros_concordam_longe_do_limiar(politica):
     """O caso mais comum no lote real: quem adiou foi a política, não o modelo."""
-    politica.adiar_incertos = True
     (e,) = _explicar(politica, (0.02, 0.03, 0.02, 0.04))
     assert e['classe'] == 'Revisar'
     assert e['motivo'] == MOTIVO_CAUTELA
@@ -85,9 +89,9 @@ def test_cautela_quando_os_membros_concordam_longe_do_limiar(politica):
     assert all(m['convicto'] for m in e['membros'])   # ...e com convicção
 
 
-def test_sem_recusa_nao_ha_motivo_de_adiamento(politica):
+def test_sem_recusa_nao_ha_motivo_de_adiamento(sem_recusa):
     """Desligada a recusa, o mesmo paciente é decidido normalmente."""
-    (e,) = _explicar(politica, (0.02, 0.03, 0.02, 0.04))
+    (e,) = _explicar(sem_recusa, (0.02, 0.03, 0.02, 0.04))
     assert e['classe'] == 'Benigno'
     assert e['motivo'] == MOTIVO_CONSENSO
 
@@ -112,7 +116,6 @@ def test_concordancia_e_medida_no_lote_inteiro(politica):
     Decidir é justamente o que o comitê faz quando ninguém discorda, então a
     taxa precisa ser contra a inclinação da média, inclusive nos adiados.
     """
-    politica.adiar_incertos = True
     relatorio = explicar(
         {m: [0.95, 0.02, 0.30] for m in MEMBROS} | {'SVM': [0.02, 0.02, 0.30]},
         range(3), politica, COMITE)
@@ -125,7 +128,6 @@ def test_concordancia_e_medida_no_lote_inteiro(politica):
 
 
 def test_relatorio_traz_as_referencias_para_o_grafico(politica):
-    politica.adiar_incertos = True
     relatorio = explicar({m: [0.5] for m in MEMBROS}, [0], politica, COMITE)
     assert relatorio['membros'] == list(MEMBROS)
     assert relatorio['limiar_comite'] == 15.0
@@ -133,5 +135,5 @@ def test_relatorio_traz_as_referencias_para_o_grafico(politica):
     assert relatorio['limiares']['SVM'] == 15.0
 
 
-def test_faixa_ausente_quando_a_recusa_esta_desligada(politica):
-    assert explicar({m: [0.5] for m in MEMBROS}, [0], politica, COMITE)['faixa'] is None
+def test_faixa_ausente_quando_a_recusa_esta_desligada(sem_recusa):
+    assert explicar({m: [0.5] for m in MEMBROS}, [0], sem_recusa, COMITE)['faixa'] is None

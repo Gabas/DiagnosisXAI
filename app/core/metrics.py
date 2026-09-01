@@ -52,7 +52,7 @@ SIGLA_PARA_MODELO = {
 # estes traços fixos com o que os números do lote mostram.
 PERFIL_MODELO = {
     'Árvore de Decisão': {
-        'forte': "explicação auditável de ponta a ponta — o caminho de regras da raiz à "
+        'forte': "explicação auditável de ponta a ponta. O caminho de regras da raiz à "
                  "folha é a própria justificativa da decisão, o que a torna o modelo mais "
                  "defensável diante de um clínico",
         'limite': "árvore única decora o treino (overfitting) e é instável: pequenas mudanças "
@@ -61,7 +61,7 @@ PERFIL_MODELO = {
                   "risco",
     },
     'KNN': {
-        'forte': "explicação por casos concretos — mostra os pacientes de treino mais parecidos "
+        'forte': "explicação por casos concretos: mostra os pacientes de treino mais parecidos "
                  "que decidiram o diagnóstico, um argumento intuitivo em contexto clínico",
         'limite': "com k=4 a decisão depende de pouquíssimos vizinhos, o que a torna sensível a "
                   "ruído local; e o custo de predição cresce com o tamanho da base, pois compara "
@@ -69,7 +69,7 @@ PERFIL_MODELO = {
     },
     'Regressão Logística': {
         'forte': "modelo linear com coeficientes assinados: dá para ler o peso e a direção de "
-                 "cada biomarcador, e as probabilidades tendem a ser bem calibradas — útil "
+                 "cada biomarcador, e as probabilidades tendem a ser bem calibradas. Isso ajuda "
                  "quando se quer decidir por faixa de risco, não só pelo rótulo",
         'limite': "assume fronteira essencialmente linear entre benigno e maligno; interações "
                   "complexas entre biomarcadores lhe escapam por construção",
@@ -78,7 +78,7 @@ PERFIL_MODELO = {
         'forte': "ensemble de 500 árvores com bagging: erros individuais se cancelam, o que "
                  "costuma dar o desempenho mais estável do conjunto e o menos sensível a "
                  "ajuste fino",
-        'limite': "não é interpretável diretamente — a explicação depende de SHAP ou do consenso "
+        'limite': "não é interpretável diretamente. A explicação depende de SHAP ou do consenso "
                   "das árvores, camadas que aproximam o raciocínio em vez de exibi-lo; e o "
                   "custo computacional é o maior dos cinco",
     },
@@ -87,12 +87,12 @@ PERFIL_MODELO = {
                  "de alta dimensão (30 biomarcadores) sem precisar de muitos dados",
         'limite': "opaco por natureza (a decisão vive num espaço projetado), sensível à escolha "
                   "de hiperparâmetros e, com probability=True, as probabilidades saem de um "
-                  "ajuste de Platt à parte — não da própria fronteira",
+                  "ajuste de Platt à parte, e não da própria fronteira",
     },
     NOME_COMITE: {
         'forte': "média das probabilidades calibradas de quatro modelos independentes: o engano "
                  "isolado de um membro é diluído pelos demais, o que produz a decisão mais "
-                 "estável do conjunto — e, no limiar calibrado, a melhor combinação de "
+                 "estável do conjunto e, no limiar calibrado, a melhor combinação de "
                  "sensibilidade e especificidade entre todas as opções do app",
         'limite': "não possui explicador próprio: a justificativa precisa ser montada a partir "
                   "dos relatórios dos membros, e quando eles discordam entre si não há uma "
@@ -377,12 +377,12 @@ def analise_critica(nome: str, metricas: dict, metricas_por_modelo: dict) -> dic
     if adiados:
         cobertura = metricas['cobertura']
         if fn == 0 and fp == 0:
-            fortes.append(f"Não errou nenhum dos {n} casos que aceitou decidir — o preço dessa "
+            fortes.append(f"Não errou nenhum dos {n} casos que aceitou decidir. O preço dessa "
                           f"garantia é ter devolvido os outros {adiados}.")
         ressalvas.append(
             f"Decidiu apenas {cobertura:.1f}% do lote: {adiados} paciente(s) "
             f"({metricas['adiados_malignos']} deles malignos) voltaram para avaliação humana. "
-            f"Todas as métricas desta linha descrevem só a parte decidida — comparar com um "
+            f"Todas as métricas desta linha descrevem só a parte decidida. Comparar com um "
             f"modelo que decide tudo é comparar coisas diferentes.")
 
     # --- O erro que importa: falso negativo (câncer classificado como benigno) ---
@@ -390,7 +390,7 @@ def analise_critica(nome: str, metricas: dict, metricas_por_modelo: dict) -> dic
         fortes.append(f"Não deixou passar nenhum tumor maligno neste lote "
                       f"({metricas['vp']} de {metricas['vp']} detectados).")
     elif fn > 0:
-        ressalvas.append(f"Deixou passar {fn} caso(s) maligno(s) como benigno(s) — é o erro mais "
+        ressalvas.append(f"Deixou passar {fn} caso(s) maligno(s) como benigno(s). É o erro mais "
                          f"caro do domínio, pois adia o tratamento e não gera nenhum sinal de "
                          f"alerta ao clínico.")
 
@@ -401,13 +401,13 @@ def analise_critica(nome: str, metricas: dict, metricas_por_modelo: dict) -> dic
     # --- Posição relativa aos demais modelos do lote ---
     if comparando:
         if nome in _melhores(metricas_por_modelo, 'sensibilidade'):
-            fortes.append("Está entre os melhores do lote em sensibilidade — a métrica decisiva "
+            fortes.append("Está entre os melhores do lote em sensibilidade, a métrica decisiva "
                           "para rastreio.")
         if nome in _melhores(metricas_por_modelo, 'especificidade'):
             fortes.append("Está entre os melhores do lote em especificidade: poupa benignos de "
                           "investigação desnecessária.")
         if nome in _melhores(metricas_por_modelo, 'f1'):
-            fortes.append("Melhor F1 do lote — o equilíbrio mais favorável entre pegar malignos "
+            fortes.append("Melhor F1 do lote: o equilíbrio mais favorável entre pegar malignos "
                           "e não alarmar benignos.")
 
     # --- Assimetria entre os dois tipos de erro ---
@@ -422,8 +422,8 @@ def analise_critica(nome: str, metricas: dict, metricas_por_modelo: dict) -> dic
         trivial = max(prevalencia, 100 - prevalencia)
         if acuracia <= trivial + MARGEM_EMPATE:
             ressalvas.append(f"A acurácia ({acuracia:.1f}%) não supera de forma clara o palpite "
-                             f"trivial de responder sempre a classe majoritária ({trivial:.1f}%) "
-                             f"— neste lote o modelo não demonstra ganho real.")
+                             f"trivial de responder sempre a classe majoritária ({trivial:.1f}%). "
+                             f"Neste lote o modelo não demonstra ganho real.")
 
     # --- Incerteza amostral: o lote é pequeno demais para o ranking? ---
     positivos = metricas['vp'] + fn
@@ -435,7 +435,7 @@ def analise_critica(nome: str, metricas: dict, metricas_por_modelo: dict) -> dic
 
     if metricas['auc'] is not None:
         fortes.append(f"ROC-AUC de {metricas['auc']:.3f}: mede a capacidade de ordenar os "
-                      f"pacientes por risco independentemente de onde o corte é posto — quanto "
+                      f"pacientes por risco independentemente de onde o corte é posto. Quanto "
                       f"mais alto, mais o limiar pode ser deslocado sem que a discriminação "
                       f"entre benignos e malignos se perca.")
 
@@ -462,7 +462,7 @@ def _veredito(metricas: dict) -> str:
     malignos = metricas['vp'] + fn
 
     if sens is None or espec is None:
-        return "Lote sem as duas classes no gabarito — não dá para julgar o modelo por ele."
+        return "Lote sem as duas classes no gabarito. Não dá para julgar o modelo por ele."
 
     adiados = metricas.get('adiados', 0)
     if adiados and fn == 0 and fp == 0:
@@ -471,20 +471,20 @@ def _veredito(metricas: dict) -> str:
                 f"{adiados} revisão(ões) couber na rotina do serviço.")
     if adiados:
         return (f"Mesmo se abstendo em {adiados} caso(s), ainda errou entre os que decidiu "
-                f"({fn} FN, {fp} FP) — a recusa não está isolando os casos difíceis como deveria.")
+                f"({fn} FN, {fp} FP). A recusa não está isolando os casos difíceis como deveria.")
 
     if fn == 0 and espec >= 95:
         return ("Perfil adequado para triagem assistida: não perdeu nenhum maligno e manteve os "
                 "alarmes falsos sob controle. Ainda assim, o laudo final é humano.")
     if fn == 0:
-        return (f"Bom para rastreio — não perdeu malignos —, mas ao custo de {fp} alarme(s) "
+        return (f"Bom para rastreio, porque não perdeu malignos, mas ao custo de {fp} alarme(s) "
                 f"falso(s). Aceitável quando a confirmação seguinte é barata.")
     if sens >= 95:
         return (f"Sensibilidade alta, porém não perfeita ({fn} de {malignos} malignos perdidos): "
                 f"serve como filtro inicial, nunca como palavra final para descartar "
                 f"malignidade.")
     if sens >= 85:
-        return (f"Sensibilidade intermediária — perdeu {fn} de {malignos} malignos. Utilizável "
+        return (f"Sensibilidade intermediária: perdeu {fn} de {malignos} malignos. É utilizável "
                 f"como segunda opinião ao lado de um modelo mais sensível, não como triagem "
                 f"isolada.")
     if espec >= 95:
@@ -532,7 +532,7 @@ def ressalvas_do_lote(metricas_por_modelo: dict, politica=None) -> list:
     if positivos < MINIMO_POR_CLASSE or negativos < MINIMO_POR_CLASSE:
         avisos.append(f"Lote pequeno ({n} pacientes: {positivos} malignos, {negativos} benignos). "
                       f"Um único paciente a mais ou a menos move as métricas em vários pontos "
-                      f"percentuais — compare os modelos pelos intervalos de confiança, não "
+                      f"percentuais. Compare os modelos pelos intervalos de confiança, não "
                       f"pelos valores pontuais.")
 
     avisos.append("Se este gabarito contém pacientes já vistos no treino, os números estão "
@@ -546,12 +546,13 @@ def _ressalva_do_limiar(metricas_por_modelo: dict, politica) -> str:
     """Aviso sobre o ponto de operação em que estas métricas foram medidas."""
     if politica is None or not getattr(politica, 'calibrada', False):
         return ("Todas as métricas assumem o limiar fixo de 50%. Em rastreio, baixá-lo troca "
-                "especificidade por sensibilidade — uma decisão clínica, não estatística.")
+                "especificidade por sensibilidade, e essa é uma decisão clínica, não "
+                "estatística.")
 
     usados = ", ".join(f"{nome} {politica.limiar(nome) * 100:.1f}%"
                        for nome in metricas_por_modelo
                        if abs(politica.limiar(nome) - 0.5) > 1e-9)
     return (f"Estes números valem para o limiar de operação em vigor ({usados or 'padrão'}), "
             f"não para o corte de 50% do scikit-learn: foi ele que trocou especificidade por "
-            f"sensibilidade. Mudar o limiar muda toda a tabela acima — a escolha do ponto de "
-            f"operação é clínica, e está registrada em data/limiares.json.")
+            f"sensibilidade. Mudar o limiar muda toda a tabela acima, e a escolha do ponto de "
+            f"operação é clínica. Ela está registrada em data/limiares.json.")

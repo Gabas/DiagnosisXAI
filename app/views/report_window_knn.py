@@ -62,7 +62,7 @@ class KNNReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             Argumentos adicionais para o construtor do CTkToplevel.
         """
         super().__init__(master, **kwargs)
-        self.title("Relatório de Explicabilidade — KNN")
+        self.title("Relatório de Explicabilidade: KNN")
         responsive_geometry(self, 1060, 840)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -217,8 +217,8 @@ class KNNReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
 
         ctk.CTkLabel(
             frame,
-            text="Use a lupa para dar zoom. Posições aproximadas — os vizinhos são "
-                 "calculados nos 30 biomarcadores.",
+            text="Use a lupa para dar zoom. As posições são aproximadas: os vizinhos "
+                 "são calculados nos 30 biomarcadores.",
             font=ctk.CTkFont(size=10), text_color="gray", wraplength=420,
         ).grid(row=3, column=0, sticky="w", padx=16, pady=(0, 10))
 
@@ -378,7 +378,7 @@ class KNNReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             else:
                 maioria_bruta = None
             if maioria_bruta != e['classe']:
-                linhas.append("   (a contagem simples sozinha não seria conclusiva — "
+                linhas.append("   (a contagem simples sozinha não seria conclusiva: "
                                "o vizinho mais próximo pesou mais)")
         if e['limitrofe']:
             linhas.append("")

@@ -58,7 +58,7 @@ class LogisticReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             Argumentos adicionais para o construtor do CTkToplevel.
         """
         super().__init__(master, **kwargs)
-        self.title("Relatório de Explicabilidade — Regressão Logística")
+        self.title("Relatório de Explicabilidade: Regressão Logística")
         responsive_geometry(self, 1060, 840)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -180,7 +180,7 @@ class LogisticReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         frame.grid_rowconfigure(1, weight=1)
 
         ctk.CTkLabel(
-            frame, text="Função de decisão — curva logística",
+            frame, text="Função de decisão: curva logística",
             font=ctk.CTkFont(size=15, weight="bold"),
         ).grid(row=0, column=0, sticky="w", padx=16, pady=(12, 4))
 

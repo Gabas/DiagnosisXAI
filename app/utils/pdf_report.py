@@ -33,6 +33,8 @@ _SUBTITULO = ParagraphStyle('DXAI_Subtitulo', parent=_ESTILOS['Heading3'], space
 _TIMESTAMP = ParagraphStyle('DXAI_Timestamp', parent=_ESTILOS['Normal'], textColor=colors.grey, fontSize=9)
 _H2 = ParagraphStyle('DXAI_H2', parent=_ESTILOS['Heading2'], spaceBefore=14, spaceAfter=6)
 _MONO = ParagraphStyle('DXAI_Mono', parent=_ESTILOS['Code'], fontName='Courier', fontSize=9, leading=12)
+_CORPO = ParagraphStyle('DXAI_Corpo', parent=_ESTILOS['Normal'], fontSize=9, leading=12,
+                        textColor=colors.grey, spaceBefore=6)
 
 _MARGENS = dict(leftMargin=2 * cm, rightMargin=2 * cm, topMargin=2 * cm, bottomMargin=2 * cm)
 
@@ -100,7 +102,11 @@ def export_batch_report(path: str, meta: dict, df, importancias_por_modelo: dict
     path : str
         Caminho de destino do arquivo PDF.
     meta : dict
-        {'arquivo', 'modelo', 'total', 'malignos', 'benignos'}.
+        {'arquivo', 'modelo', 'total', 'malignos', 'benignos'} e, opcionalmente,
+        'adiados', 'regua' (saída de ``PoliticaDecisao.regua``) e
+        'justificativa' (o motivo dos cortes). As duas últimas fazem o PDF
+        carregar o ponto de operação junto com os resultados: sem elas, uma
+        linha "Maligno, certeza 25%" fica sem como ser conferida.
     df : pandas.DataFrame
         ``df_resultado`` do pipeline — usa-se apenas o índice e as colunas de
         diagnóstico (as 30 colunas de biomarcadores não entram na tabela).
@@ -135,6 +141,17 @@ def export_batch_report(path: str, meta: dict, df, importancias_por_modelo: dict
     ]))
     story.append(t)
 
+    if meta.get('regua'):
+        story.append(Paragraph("Régua de decisão (ponto de operação)", _H2))
+        linhas = [["Resultado", "Faixa de certeza", "O que o sistema faz"]] + [
+            [str(f['rotulo']), str(f['faixa']), str(f['efeito'])] for f in meta['regua']
+        ]
+        tabela = Table(linhas, colWidths=[3 * cm, 4 * cm, 9 * cm])
+        tabela.setStyle(_estilo_tabela(zebra=True))
+        story.append(tabela)
+        if meta.get('justificativa'):
+            story.append(Paragraph(_escapar_html(str(meta['justificativa'])), _CORPO))
+
     if auditoria:
         story.append(Paragraph("Acurácia (auditoria)", _H2))
         linhas = [["Modelo", "Acurácia"]] + [[k, f"{v:.2f}%"] for k, v in auditoria.items()]
@@ -145,7 +162,7 @@ def export_batch_report(path: str, meta: dict, df, importancias_por_modelo: dict
     for nome_modelo, importancias in importancias_por_modelo.items():
         if not importancias:
             continue
-        story.append(Paragraph(f"Biomarcadores mais relevantes — {nome_modelo}", _H2))
+        story.append(Paragraph(f"Biomarcadores mais relevantes: {nome_modelo}", _H2))
         linhas = [["Biomarcador", "Importância"]] + [
             [str(nome), str(valor)] for nome, valor in importancias[:10]
         ]

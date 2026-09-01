@@ -26,6 +26,7 @@ from core.decision import (
 
 @pytest.fixture
 def politica():
+    """Política com limiares calibrados e sem faixa de recusa (nada a adiar)."""
     return PoliticaDecisao({'SVM': 0.15, 'KNN': 0.30}, banda=0.10,
                            metadados={'piso_especificidade': 92.0})
 
@@ -88,43 +89,125 @@ def test_carregar_arquivo_corrompido_nao_derruba_o_app(tmp_path):
     assert not PoliticaDecisao.carregar(str(caminho)).calibrada
 
 
-def test_resumo_menciona_o_limiar_e_o_criterio(politica):
-    texto = politica.resumo('SVM')
-    assert '15.0%' in texto
-    assert 'especificidade ≥ 92%' in texto      # critério que gerou o limiar
-    assert 'revisão' in texto
-    assert 'padrão' in PoliticaDecisao().resumo('SVM')
-
-
-def test_resumo_traz_o_desempenho_medido_no_treino():
+def test_justificativa_traz_o_desempenho_medido_no_treino():
     politica = PoliticaDecisao(
         {'SVM': 0.15},
         metadados={'piso_especificidade': 92.0,
                    'desempenho_treino': {'SVM': {'sensibilidade': 97.5, 'especificidade': 92.1}}},
     )
-    texto = politica.resumo('SVM')
+    texto = politica.justificativa('SVM')
     assert 'sensibilidade 97.5%' in texto
     assert 'especificidade 92.1%' in texto
+
+
+def test_justificativa_da_politica_neutra_admite_o_corte_de_50(politica):
+    """Sem calibração, o texto não pode fingir que houve escolha de ponto."""
+    texto = PoliticaDecisao().justificativa('SVM')
+    assert '50%' in texto and 'scikit-learn' in texto
+
+
+def test_regra_condensa_as_faixas_numa_linha(politica):
+    linha = politica.regra('SVM')
+    assert 'Benigno: certeza < 5.0%' in linha
+    assert 'Limítrofe: 5.0% a 25.0%' in linha
+    assert 'Maligno: certeza > 25.0%' in linha
+
+
+# --- Régua de decisão: as faixas e o porquê dos cortes ---
+
+def test_regua_cobre_de_ponta_a_ponta_sem_buracos(politica):
+    """As faixas precisam ser contíguas: todo paciente cai em exatamente uma."""
+    faixas = politica.regua('SVM')
+    assert faixas[0]['inferior'] == 0.0
+    assert faixas[-1]['superior'] == 1.0
+    for anterior, seguinte in zip(faixas, faixas[1:]):
+        assert anterior['superior'] == seguinte['inferior']
+
+
+def test_regua_sem_recusa_tem_a_faixa_limitrofe_no_meio(politica):
+    benigno, incerta, maligno = politica.regua('SVM')
+    assert benigno['rotulo'] == 'Benigno'
+    assert maligno['rotulo'] == 'Maligno'
+    # A faixa incerta é o limiar ± banda: 0,15 ± 0,10.
+    assert incerta['rotulo'] == ZONA_LIMITROFE
+    assert (incerta['inferior'], incerta['superior']) == pytest.approx((0.05, 0.25))
+    assert '5.0% a 25.0%' in incerta['faixa']
+
+
+def test_regua_com_recusa_tem_a_faixa_de_recusa_no_meio(com_recusa):
+    benigno, incerta, maligno = com_recusa.regua('SVM')
+    assert incerta['rotulo'] == ROTULO_REVISAR
+    assert (incerta['inferior'], incerta['superior']) == pytest.approx((0.01, 0.70))
+    # Os cortes da régua são os mesmos que rotular() aplica.
+    assert com_recusa.rotular(benigno['superior'] - 1e-6, 'SVM') == 'Benigno'
+    assert com_recusa.rotular(maligno['inferior'], 'SVM') == 'Maligno'
+
+
+def test_regua_omite_faixa_vazia():
+    """Limiar baixo demais para caber uma faixa Benigno abaixo dele."""
+    faixas = PoliticaDecisao({'SVM': 0.05}, banda=0.10).regua('SVM')
+    assert [f['rotulo'] for f in faixas] == [ZONA_LIMITROFE, 'Maligno']
+    assert faixas[0]['inferior'] == 0.0
+
+
+def test_faixa_incerta_muda_com_a_recusa(politica, com_recusa):
+    assert politica.faixa_incerta('SVM') == pytest.approx((0.05, 0.25))
+    assert com_recusa.faixa_incerta('SVM') == pytest.approx((0.01, 0.70))
+
+
+def test_justificativa_do_limiar_responde_por_que_nao_50(politica):
+    texto = politica.justificativa('SVM')
+    assert '15.0%' in texto and '50%' in texto
+    assert 'falso negativo' in texto
+    assert 'especificidade ≥ 92%' in texto
+    assert 'teste não participou' in texto      # a escolha não vazou o teste
+
+
+def test_justificativa_da_recusa_explica_os_dois_cortes(com_recusa):
+    texto = com_recusa.justificativa('SVM')
+    assert '1.0%' in texto and '70.0%' in texto
+    assert 'menor certeza que um paciente maligno' in texto
+    # O limiar cai dentro da faixa: quem decide passam a ser os dois cortes.
+    assert '15.0%' in texto
+
+
+def test_justificativa_da_recusa_com_tolerancia_nao_promete_erro_zero():
+    politica = PoliticaDecisao(
+        {'SVM': 0.15}, faixas_revisao={'SVM': (0.05, 0.60)},
+        metadados={'tolerancia_recusa': 0.02})
+    politica.adiar_incertos = True
+    texto = politica.justificativa('SVM')
+    assert '2% mais extremos' in texto
+    assert 'menor certeza que um paciente maligno' not in texto
 
 
 # --- Opção de recusa (coluna "Revisar") ---
 
 @pytest.fixture
 def com_recusa():
-    """Política com faixa de recusa calibrada para o SVM, já ligada."""
-    politica = PoliticaDecisao(
+    """Política com faixa de recusa calibrada para o SVM (ligada, como no padrão)."""
+    return PoliticaDecisao(
         {'SVM': 0.15, 'KNN': 0.30}, banda=0.10,
         faixas_revisao={'SVM': (0.01, 0.70)},
         metadados={'cobertura_treino': {'SVM': 64.8}},
     )
-    politica.adiar_incertos = True
-    return politica
 
 
-def test_recusa_comeca_desligada(politica):
-    """Ligar a recusa muda o que o app entrega — não pode ser o padrão silencioso."""
-    assert PoliticaDecisao().adiar_incertos is False
-    assert politica.rotular(0.20, 'SVM') == 'Maligno'   # decide, mesmo incerto
+def test_recusa_comeca_ligada(com_recusa):
+    """
+    O padrão seguro é não decidir o que não dá para decidir.
+
+    Entre devolver um caso incerto e arriscar um palpite que pode liberar um
+    tumor maligno, o programa devolve — e quem quiser o palpite desliga a
+    recusa explicitamente.
+    """
+    assert PoliticaDecisao().adiar_incertos is True
+    assert com_recusa.rotular(0.20, 'SVM') == ROTULO_REVISAR
+
+
+def test_recusa_desligada_volta_a_decidir_tudo(com_recusa):
+    com_recusa.adiar_incertos = False
+    assert com_recusa.rotular(0.20, 'SVM') == 'Maligno'   # decide, mesmo incerto
 
 
 def test_recusa_divide_em_tres_saidas(com_recusa):
@@ -147,10 +230,10 @@ def test_zona_de_um_caso_adiado(com_recusa):
     assert com_recusa.zona(0.005, 'SVM') == ZONA_DEFINIDA
 
 
-def test_resumo_descreve_a_faixa_e_a_cobertura(com_recusa):
-    texto = com_recusa.resumo('SVM')
+def test_justificativa_da_recusa_descreve_a_faixa_e_a_cobertura(com_recusa):
+    texto = com_recusa.justificativa('SVM')
     assert '1.0%' in texto and '70.0%' in texto
-    assert '65% dos casos' in texto or 'decidiu 65%' in texto
+    assert 'decidiu 65% dos casos' in texto
 
 
 def test_aplicar_marca_explicacoes_adiadas(com_recusa):

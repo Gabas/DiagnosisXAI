@@ -95,7 +95,7 @@ def gerar_mapa_html(train_2d, train_y, batch_2d, pacientes: list, caminho_saida:
     batch_2d = np.asarray(batch_2d, dtype=float)
 
     fig = figure(
-        title="Mapa Populacional Interativo — pacientes do lote sobre a população de treino",
+        title="Mapa Populacional Interativo: pacientes do lote sobre a população de treino",
         width=980, height=680,
         tools="pan,wheel_zoom,box_zoom,reset,save",
         active_scroll="wheel_zoom",
@@ -114,9 +114,9 @@ def gerar_mapa_html(train_2d, train_y, batch_2d, pacientes: list, caminho_saida:
     src_ben = ColumnDataSource(dict(x=train_2d[ben, 0], y=train_2d[ben, 1]))
     src_mal = ColumnDataSource(dict(x=train_2d[mal, 0], y=train_2d[mal, 1]))
     r_ben = fig.scatter("x", "y", source=src_ben, size=6, color=COR_BENIGNO,
-                        alpha=0.22, legend_label="Treino — Benigno")
+                        alpha=0.22, legend_label="Treino: Benigno")
     r_mal = fig.scatter("x", "y", source=src_mal, size=6, color=COR_MALIGNO,
-                        alpha=0.22, legend_label="Treino — Maligno")
+                        alpha=0.22, legend_label="Treino: Maligno")
 
     # --- lote (pacientes novos) como losangos destacados ---
     src_batch = ColumnDataSource(dict(
@@ -140,7 +140,7 @@ def gerar_mapa_html(train_2d, train_y, batch_2d, pacientes: list, caminho_saida:
         ("Diagnóstico", "@classe"),
         ("Certeza", "@certeza"),
         ("Perfil", "@perfil"),
-        ("Decisão", "@decisao"),
+        ("Zona", "@decisao"),
     ]))
 
     fig.legend.click_policy = "hide"
@@ -180,7 +180,7 @@ def gerar_margem_svm_html(explicacoes: list, caminho_saida: str = None) -> str:
     xs = [float(e['distancia']) for e in explicacoes]
 
     fig = figure(
-        title="Margem do SVM — distância de cada paciente à fronteira de decisão",
+        title="Margem do SVM: distância de cada paciente à fronteira de decisão",
         width=980, height=520,
         tools="pan,wheel_zoom,box_zoom,reset,save", active_scroll="wheel_zoom",
     )

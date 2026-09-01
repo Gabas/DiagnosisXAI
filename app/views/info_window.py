@@ -15,7 +15,7 @@ from utils.ui import ScrollableFrame, responsive_geometry
 CONTEUDO = {
     "dt": {
         "titulo": "Árvore de Decisão",
-        "subtitulo": "Decision Tree — modelo baseado em regras",
+        "subtitulo": "Decision Tree: modelo baseado em regras",
         "secoes": [
             ("O que é",
              "A Árvore de Decisão classifica um paciente respondendo a uma sequência "
@@ -26,15 +26,15 @@ CONTEUDO = {
              "No treino, o algoritmo escolhe em cada nó o atributo e o limiar que melhor "
              "separam as classes, medindo a pureza pela entropia (ganho de informação). "
              "O processo se repete recursivamente até as folhas ficarem puras. Na predição, "
-             "o paciente percorre a árvore da raiz à folha — e esse caminho de regras é a "
+             "o paciente percorre a árvore da raiz à folha, e esse caminho de regras é a "
              "própria explicação da decisão."),
             ("Parâmetros usados",
-             "criterion='entropy' — usa o ganho de informação para escolher as divisões.\n"
-             "random_state=42 — garante reprodutibilidade.\n"
+             "criterion='entropy': usa o ganho de informação para escolher as divisões.\n"
+             "random_state=42: garante reprodutibilidade.\n"
              "É o único modelo treinado nos dados brutos, pois é invariante à escala "
              "(não depende da padronização Z-score)."),
             ("Vantagens e limitações",
-             "Totalmente interpretável — dá para seguir exatamente a lógica da decisão. "
+             "Totalmente interpretável: dá para seguir exatamente a lógica da decisão. "
              "Em contrapartida, uma única árvore tende a decorar o treino (overfitting), "
              "o que motiva o uso do Random Forest."),
         ],
@@ -59,17 +59,17 @@ CONTEUDO = {
             ("Como funciona",
              "Para um novo paciente, calcula a distância (Manhattan) até todos os "
              "pacientes de treino, seleciona os K=4 mais próximos e adota o diagnóstico "
-             "da maioria — mas o voto de cada vizinho é ponderado pelo inverso da "
+             "da maioria, mas o voto de cada vizinho é ponderado pelo inverso da "
              "distância, então os mais próximos pesam mais. Por depender de distância, "
              "exige dados padronizados (Z-score), para que todos os atributos pesem "
              "igualmente."),
             ("Parâmetros usados",
-             "n_neighbors=4 — número de vizinhos que votam.\n"
-             "weights='distance' — vizinhos mais próximos têm peso maior no voto.\n"
-             "metric='manhattan' — distância como soma das diferenças absolutas, em vez "
+             "n_neighbors=4: número de vizinhos que votam.\n"
+             "weights='distance': vizinhos mais próximos têm peso maior no voto.\n"
+             "metric='manhattan': distância como soma das diferenças absolutas, em vez "
              "da euclidiana.\n"
-             "Combinação escolhida por validação cruzada (5-fold) no treino — não só "
-             "pela acurácia no teste — por generalizar melhor que k=20 com voto uniforme."),
+             "Combinação escolhida por validação cruzada (5-fold) no treino, e não só "
+             "pela acurácia no teste, por generalizar melhor que k=20 com voto uniforme."),
             ("Vantagens e limitações",
              "Simples e sem suposições sobre a forma dos dados; a explicação é intuitiva "
              "(os vizinhos que decidiram). Fica mais lento com muitos dados, pois compara "
@@ -89,7 +89,7 @@ CONTEUDO = {
     },
     "lr": {
         "titulo": "Regressão Logística",
-        "subtitulo": "Logistic Regression — modelo linear probabilístico",
+        "subtitulo": "Logistic Regression: modelo linear probabilístico",
         "secoes": [
             ("O que é",
              "A Regressão Logística é um modelo linear que estima a probabilidade de um "
@@ -101,16 +101,16 @@ CONTEUDO = {
              "pesos w para maximizar a verossimilhança, com regularização L2 controlada por "
              "C (solver liblinear). Por usar combinação linear, requer dados padronizados."),
             ("Parâmetros usados",
-             "C=0.1 — força da regularização L2 (inverso; quanto menor, mais forte). "
-             "Escolhido por validação cruzada no treino — generaliza melhor que o padrão "
+             "C=0.1: força da regularização L2 (inverso; quanto menor, mais forte). "
+             "Escolhido por validação cruzada no treino, porque generaliza melhor que o padrão "
              "(C=1.0) neste dataset.\n"
-             "solver='liblinear' — otimizador eficiente para bases pequenas/médias.\n"
-             "class_weight='balanced' — dá mais peso à classe minoritária, compensando o "
+             "solver='liblinear': otimizador eficiente para bases pequenas/médias.\n"
+             "class_weight='balanced': dá mais peso à classe minoritária, compensando o "
              "desbalanceamento.\n"
-             "max_iter=2000 — teto de iterações para garantir convergência.\n"
+             "max_iter=2000: teto de iterações para garantir convergência.\n"
              "random_state=42."),
             ("Vantagens e limitações",
-             "Rápida, estável e interpretável — o peso de cada atributo indica sua influência "
+             "Rápida, estável e interpretável: o peso de cada atributo indica sua influência "
              "e direção. Assume uma fronteira de decisão essencialmente linear, o que limita "
              "padrões muito complexos."),
         ],
@@ -129,7 +129,7 @@ CONTEUDO = {
     },
     "rf": {
         "titulo": "Random Forest",
-        "subtitulo": "Floresta Aleatória — ensemble de árvores (bagging)",
+        "subtitulo": "Floresta Aleatória: ensemble de árvores (bagging)",
         "secoes": [
             ("O que é",
              "O Random Forest é um ensemble (comitê) de muitas Árvores de Decisão. Em vez "
@@ -142,17 +142,17 @@ CONTEUDO = {
              "combinação, os erros se cancelam e o overfitting diminui. A predição final é a "
              "média das probabilidades das árvores (voto suave), não uma contagem de votos."),
             ("Parâmetros usados",
-             "n_estimators=500 — número de árvores no comitê.\n"
-             "max_depth=10, min_samples_split=4, min_samples_leaf=2, max_features='sqrt' — "
+             "n_estimators=500: número de árvores no comitê.\n"
+             "max_depth=10, min_samples_split=4, min_samples_leaf=2, max_features='sqrt': "
              "limitam o crescimento de cada árvore; escolhidos por validação cruzada no "
              "treino, para generalizar melhor que os parâmetros padrão.\n"
-             "class_weight='balanced_subsample' — compensa o desbalanceamento entre classes, "
+             "class_weight='balanced_subsample': compensa o desbalanceamento entre classes, "
              "recalculado a cada amostra bootstrap.\n"
-             "n_jobs=-1 — treina as árvores em paralelo, usando todos os núcleos da CPU.\n"
+             "n_jobs=-1: treina as árvores em paralelo, usando todos os núcleos da CPU.\n"
              "random_state=42."),
             ("Vantagens e limitações",
              "Alta acurácia e robustez, com pouca necessidade de ajuste. É menos interpretável "
-             "que uma árvore única — por isso o notebook usa SHAP para explicá-lo."),
+             "que uma árvore única, e por isso o notebook usa SHAP para explicá-lo."),
         ],
         "codigo":
             "from sklearn.ensemble import RandomForestClassifier\n\n"
@@ -171,20 +171,20 @@ CONTEUDO = {
     },
     "svm": {
         "titulo": "Support Vector Machine (SVM)",
-        "subtitulo": "Máquina de Vetores de Suporte — kernel RBF",
+        "subtitulo": "Máquina de Vetores de Suporte: kernel RBF",
         "secoes": [
             ("O que é",
              "A SVM procura o hiperplano que separa as classes (benigno × maligno) com a "
-             "maior margem possível — ou seja, a maior 'faixa de segurança' entre os grupos."),
+             "maior margem possível, ou seja, a maior 'faixa de segurança' entre os grupos."),
             ("Como funciona",
              "Quando as classes não são separáveis por uma reta, a SVM usa um kernel (aqui, "
              "o RBF/gaussiano) para projetar os dados em um espaço de dimensão maior, onde a "
              "separação por um hiperplano se torna possível. A decisão é guiada pelos pontos "
              "mais próximos da fronteira (os vetores de suporte). Usa dados padronizados."),
             ("Parâmetros usados",
-             "kernel='rbf' — fronteira não-linear via kernel gaussiano.\n"
-             "class_weight='balanced' — compensa o desbalanceamento entre classes.\n"
-             "probability=True — habilita a estimativa de probabilidade (predict_proba).\n"
+             "kernel='rbf': fronteira não-linear via kernel gaussiano.\n"
+             "class_weight='balanced': compensa o desbalanceamento entre classes.\n"
+             "probability=True: habilita a estimativa de probabilidade (predict_proba).\n"
              "random_state=42."),
             ("Vantagens e limitações",
              "Muito eficaz em espaços de alta dimensão e com fronteiras complexas. É pouco "
@@ -202,13 +202,13 @@ CONTEUDO = {
             "predicao = modelo.predict(X_novo_scaled)",
     },
     "shap": {
-        "titulo": "SHAP — SHapley Additive exPlanations",
+        "titulo": "SHAP: SHapley Additive exPlanations",
         "subtitulo": "Explicabilidade baseada na teoria dos jogos",
         "secoes": [
             ("O que é",
              "SHAP é um método de explicabilidade que atribui a cada atributo uma "
              "'contribuição justa' para a predição de um modelo, usando os valores de "
-             "Shapley — um conceito da teoria dos jogos cooperativos."),
+             "Shapley, um conceito da teoria dos jogos cooperativos."),
             ("Como funciona",
              "A ideia é medir quanto cada biomarcador contribui para afastar a predição do "
              "valor médio (base), considerando todas as combinações possíveis de atributos. "
@@ -229,7 +229,7 @@ CONTEUDO = {
             "shap.plots.waterfall(shap_values[0])       # explicação de 1 paciente",
     },
     "umap": {
-        "titulo": "UMAP — Uniform Manifold Approximation and Projection",
+        "titulo": "UMAP: Uniform Manifold Approximation and Projection",
         "subtitulo": "Redução de dimensionalidade não-linear",
         "secoes": [
             ("O que é",
@@ -239,11 +239,11 @@ CONTEUDO = {
             ("Como funciona",
              "Ele modela a estrutura (o 'manifold') dos dados em alta dimensão construindo um "
              "grafo de vizinhanças e, em seguida, encontra uma disposição em 2D que preserva "
-             "ao máximo essas vizinhanças — mantendo próximos os pontos que eram próximos no "
+             "ao máximo essas vizinhanças, mantendo próximos os pontos que eram próximos no "
              "espaço original. Diferente do PCA (linear), o UMAP captura relações não-lineares."),
             ("No projeto",
              "No notebook, o UMAP projeta os pacientes em 2D para visualizar a separabilidade "
-             "entre tumores benignos e malignos — quanto mais separados os grupos, mais "
+             "entre tumores benignos e malignos. Quanto mais separados os grupos, mais "
              "'aprendível' é o problema."),
         ],
         "codigo":

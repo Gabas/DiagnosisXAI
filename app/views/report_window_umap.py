@@ -63,7 +63,7 @@ class UmapMapWindow(ctk.CTkToplevel):
             Argumentos adicionais para o CTkToplevel.
         """
         super().__init__(master, **kwargs)
-        self.title("Mapa Populacional — UMAP")
+        self.title("Mapa Populacional: UMAP")
         responsive_geometry(self, 980, 760)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -158,9 +158,9 @@ class UmapMapWindow(ctk.CTkToplevel):
             Line2D([0], [0], marker='o', color='none', markerfacecolor="gray",
                    markersize=7, label='Treino (população)'),
             Line2D([0], [0], marker='D', color='none', markerfacecolor=self.COR_MALIGNO,
-                   markeredgecolor='white', markersize=8, label='Lote — Maligno'),
+                   markeredgecolor='white', markersize=8, label='Lote: Maligno'),
             Line2D([0], [0], marker='D', color='none', markerfacecolor=self.COR_BENIGNO,
-                   markeredgecolor='white', markersize=8, label='Lote — Benigno'),
+                   markeredgecolor='white', markersize=8, label='Lote: Benigno'),
         ]
         self._ax.legend(handles=legenda, facecolor=self.COR_FUNDO, edgecolor="gray",
                         labelcolor="white", fontsize=8, loc="best")

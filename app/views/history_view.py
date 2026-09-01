@@ -206,7 +206,7 @@ class HistoryView(ctk.CTkFrame):
 
             acc_text = "  ·  ".join(f"{k}: {v:.2f}%" for k, v in acuracia.items())
             ctk.CTkLabel(
-                acc_frame, text=f"Acurácia — {acc_text}",
+                acc_frame, text=f"Acurácia: {acc_text}",
                 font=ctk.CTkFont(size=12), text_color="#2ecc71",
             ).pack(anchor="w", padx=10, pady=6)
 
@@ -408,7 +408,7 @@ class SessionDetailWindow(ctk.CTkToplevel):
             if tipo in relatorios:
                 ctk.CTkButton(
                     wrapper,
-                    text=f"Ver Relatório de Explicabilidade — {rotulo}",
+                    text=f"Ver Relatório de Explicabilidade: {rotulo}",
                     fg_color="#2980b9", hover_color="#3498db",
                     command=lambda t=tipo: self._abrir_relatorio(t),
                 ).pack(fill="x", pady=(14, 0))
@@ -419,7 +419,7 @@ class SessionDetailWindow(ctk.CTkToplevel):
             for key in shap.get('modelos', []):
                 nome = report_launchers.MODELO_POR_KEY.get(key, key)
                 ctk.CTkButton(
-                    wrapper, text=f"Ver Relatório SHAP — {nome}",
+                    wrapper, text=f"Ver Relatório SHAP: {nome}",
                     fg_color="#8e44ad", hover_color="#9b59b6",
                     command=lambda k=key: self._abrir_shap(k),
                 ).pack(fill="x", pady=(8, 0))
@@ -427,7 +427,7 @@ class SessionDetailWindow(ctk.CTkToplevel):
         # UMAP: mapa populacional do lote (reabre interativo).
         if 'umap' in relatorios:
             ctk.CTkButton(
-                wrapper, text="Ver Mapa Populacional — UMAP",
+                wrapper, text="Ver Mapa Populacional: UMAP",
                 fg_color="#16a085", hover_color="#1abc9c",
                 command=self._abrir_umap,
             ).pack(fill="x", pady=(8, 0))

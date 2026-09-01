@@ -79,7 +79,7 @@ class ComiteReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             Argumentos adicionais para o construtor do CTkToplevel.
         """
         super().__init__(master, **kwargs)
-        self.title("Relatório de Explicabilidade — Comitê (voto suave)")
+        self.title("Relatório de Explicabilidade: Comitê (voto suave)")
         responsive_geometry(self, 1060, 840)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -136,7 +136,7 @@ class ComiteReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
                 text=(f"Dos {adiados} caso(s) devolvido(s): "
                       f"{motivos.get(MOTIVO_DISCORDANCIA, 0)} por discordância entre os membros, "
                       f"{motivos.get(MOTIVO_FRONTEIRA, 0)} por estarem na fronteira da decisão e "
-                      f"{motivos.get(MOTIVO_CAUTELA, 0)} por cautela da política — nestes últimos "
+                      f"{motivos.get(MOTIVO_CAUTELA, 0)} por cautela da política. Nestes últimos "
                       f"os membros concordavam, e quem adiou foi a largura da faixa de recusa."),
                 font=ctk.CTkFont(size=12), text_color=self.COR_REVISAR,
                 justify="left", wraplength=980,
@@ -182,7 +182,7 @@ class ComiteReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         ctk.CTkLabel(
             frame,
             text="Nenhum membro decide sozinho: a média é sempre dos quatro. A concordância "
-                 "mede alinhamento, não peso — todos pesam igual.",
+                 "mede alinhamento, não peso: todos pesam igual.",
             font=ctk.CTkFont(size=10), text_color="gray", justify="left", wraplength=420,
         ).grid(row=len(self._membros) + 2, column=0, columnspan=3,
                sticky="w", padx=16, pady=(6, 12))
@@ -390,7 +390,7 @@ class ComiteReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             linhas.append(
                 f"   • {d['nome']:22s} {d['probabilidade']:5.1f}%   "
                 f"{seta} {abs(d['margem']):4.1f} pp do próprio limiar "
-                f"({d['limiar']:.0f}%)  —  {d['classe']}, {convicto}"
+                f"({d['limiar']:.0f}%)  ·  {d['classe']}, {convicto}"
             )
 
         linhas.append("")
@@ -413,7 +413,7 @@ class ComiteReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             return [
                 "POR QUE FOI DEVOLVIDO: os membros discordaram entre si.",
                 f"   Divisão de {e['votos_maligno']} contra {e['votos_benigno']}, com "
-                f"{e['amplitude']:.1f} pp entre o mais alto e o mais baixo — a média caiu na "
+                f"{e['amplitude']:.1f} pp entre o mais alto e o mais baixo. A média caiu na "
                 f"zona de recusa por cancelamento, não por ignorância.",
                 f"   Divergiram da inclinação do comitê: {discordantes}.",
                 "   Vale olhar o relatório individual de quem discordou: o desacordo costuma "
@@ -422,7 +422,7 @@ class ComiteReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         if e['motivo'] == MOTIVO_FRONTEIRA:
             return [
                 "POR QUE FOI DEVOLVIDO: a média ficou em cima do limiar de decisão.",
-                f"   {e['probabilidade']:.1f}% contra um limiar de {self._limiar_comite:.1f}% — "
+                f"   {e['probabilidade']:.1f}% contra um limiar de {self._limiar_comite:.1f}%. "
                 f"um deslocamento pequeno inverteria a resposta. É o caso genuinamente "
                 f"indeciso, e a decisão é clínica: nenhum modelo deste app vai resolvê-lo.",
             ]
@@ -434,7 +434,7 @@ class ComiteReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
                 f"{self._limiar_comite:.1f}%. O caso só foi devolvido porque a faixa de recusa "
                 f"vai de {self._faixa[0]:.1f}% a {self._faixa[1]:.1f}%.",
                 "   Essa faixa foi calibrada para não errar nenhum caso do treino, e por isso é "
-                "definida pelos dois pacientes mais atípicos que ele continha — larga o "
+                "definida pelos dois pacientes mais atípicos que ele continha. É larga o "
                 "bastante para alcançar casos como este. Se a fila de revisão for grande demais, "
                 "é aqui que ela pode ser encurtada, aceitando algum risco.",
             ]
@@ -448,7 +448,7 @@ class ComiteReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             ]
         return [
             "DECISÃO POR CONSENSO: todos os membros apontaram o mesmo lado.",
-            "   É o cenário mais confiável do comitê — o acerto não depende de um modelo só.",
+            "   É o cenário mais confiável do comitê: o acerto não depende de um modelo só.",
         ]
 
     def _style_tree(self):

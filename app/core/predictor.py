@@ -9,7 +9,7 @@ da mesma probabilidade calibrada, aplicada à política de decisão de
 import numpy as np
 import pandas as pd
 
-from core.decision import NOME_COMITE, PoliticaDecisao
+from core.decision import COLUNA_ZONA, NOME_COMITE, PoliticaDecisao
 from core.inference import ModelLoader
 
 class PredictorEngine:
@@ -83,7 +83,7 @@ class PredictorEngine:
 
     def classificar_decisao(self, certeza_maligno: float, modelo: str) -> str:
         """
-        Classifica a decisão como 'Limítrofe' ou 'Definida'.
+        Diz em que faixa da régua de decisão a certeza do paciente caiu.
 
         Parameters
         ----------
@@ -95,9 +95,10 @@ class PredictorEngine:
         Returns
         -------
         str
-            'Limítrofe' quando a certeza está a até ``politica.banda`` do limiar
-            de operação — perto o bastante para que a decisão vire com uma
-            variação pequena; 'Definida' caso contrário.
+            'Revisar' quando o caso caiu na faixa em que o modelo se abstém;
+            'Limítrofe' quando ele decidiu, mas a certeza está a até
+            ``politica.banda`` do limiar — perto o bastante para que a decisão
+            vire com uma variação pequena; 'Definida' caso contrário.
         """
         return self.politica.zona(certeza_maligno / 100.0, modelo)
 
@@ -210,7 +211,7 @@ class PredictorEngine:
             df_resultado['Diagnóstico_IA'] = [
                 self.politica.rotular(c / 100.0, model_name) for c in certezas]
             df_resultado['Certeza_Maligno(%)'] = certezas.round(2)
-            df_resultado['Decisão'] = [
+            df_resultado[COLUNA_ZONA] = [
                 self.classificar_decisao(c, model_name) for c in certezas]
 
             # A certeza de cada membro fica visível: é a explicação do comitê —
@@ -238,8 +239,8 @@ class PredictorEngine:
                 df_resultado['Diagnóstico_IA'] = [
                     self.politica.rotular(p, model_name) for p in prob]
                 df_resultado['Certeza_Maligno(%)'] = certezas.round(2)
-                # Marca decisões limítrofes (perto do limiar de operação) para revisão.
-                df_resultado['Decisão'] = [
+                # Registra em que faixa da régua a certeza caiu (ver PoliticaDecisao.regua).
+                df_resultado[COLUNA_ZONA] = [
                     self.classificar_decisao(c, model_name) for c in certezas]
 
         # Aviso de perfil atípico (fora da distribuição de treino) — independe do

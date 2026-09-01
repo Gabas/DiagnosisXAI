@@ -11,13 +11,21 @@ import pandas as pd
 from core.batch_processor import BatchProcessor
 from core.biomarkers import descricao_coluna
 from core.committee import explicar as explicar_comite
-from core.decision import ROTULO_REVISAR, aplicar_a_explicacoes
+from core.decision import (
+    COLUNA_ZONA,
+    ROTULO_BENIGNO,
+    ROTULO_MALIGNO,
+    ROTULO_REVISAR,
+    ZONA_LIMITROFE,
+    aplicar_a_explicacoes,
+)
 from core.history_manager import HistoryManager
 from core.inference import ModelLoader
 from core.metrics import analise_critica, avaliar_modelos, ressalvas_do_lote
 from core.predictor import PredictorEngine
 from utils.ui import ScrollableFrame, bind_treeview_mousewheel, HeadingTooltip
 from utils.pdf_report import export_batch_report, resolve_reports_dir
+from views.report_common import COR_BENIGNO, COR_MALIGNO, COR_REVISAR
 from views.report_window import ReportWindow
 from views.report_window_comite import ComiteReportWindow
 from views.report_window_lr import LogisticReportWindow
@@ -87,7 +95,7 @@ class PredictView(ctk.CTkFrame):
     _DESCRICAO_METRICA = {
         "modelo": "Modelo de IA avaliado contra o gabarito deste lote.",
         "cobertura": "Fração do lote em que o modelo aceitou decidir. Abaixo de 100%, todas as "
-                     "outras colunas descrevem apenas essa parte — os casos devolvidos para "
+                     "outras colunas descrevem apenas essa parte. Os casos devolvidos para "
                      "revisão não entram na matriz de confusão, pois não houve decisão a "
                      "pontuar. Decidir menos torna as demais métricas mais fáceis.",
         "acuracia": "Proporção de acertos no lote inteiro. Isolada, engana: num lote "
@@ -100,11 +108,11 @@ class PredictView(ctk.CTkFrame):
                           "alarme falso (revocação da classe Benigno).",
         "precisao": "Dos pacientes que o modelo apontou como malignos, quantos eram de fato "
                     "malignos (valor preditivo positivo). Depende da prevalência do lote.",
-        "f1": "Média harmônica entre precisão e sensibilidade — resumo único de quão bem o "
+        "f1": "Média harmônica entre precisão e sensibilidade. Resume num número só o quanto o "
               "modelo pega malignos sem alarmar benignos.",
         "vp": "Verdadeiros positivos: malignos corretamente identificados.",
-        "fn": "Falsos negativos: malignos classificados como benignos. O erro mais caro — "
-              "o câncer passa sem qualquer sinal de alerta.",
+        "fn": "Falsos negativos: malignos classificados como benignos. É o erro mais caro, "
+              "porque o câncer passa sem nenhum sinal de alerta.",
         "fp": "Falsos positivos: benignos classificados como malignos. Custa exames "
               "adicionais e ansiedade, mas não deixa doença sem tratar.",
         "vn": "Verdadeiros negativos: benignos corretamente identificados.",
@@ -112,18 +120,18 @@ class PredictView(ctk.CTkFrame):
 
     # Rótulos exibidos no menu de relatórios do Passo 5.
     _ROTULOS_RELATORIO = {
-        'comite': "Comitê — concordância dos membros",
-        'arvore': "Árvore de Decisão — regras",
-        'logistica': "Regressão Logística — contribuições",
-        'knn': "KNN — vizinhos",
-        'randomforest': "Random Forest — consenso das árvores",
-        'svm': "SVM — vetores de suporte",
-        'shap_dt': "Árvore de Decisão — SHAP",
-        'shap_rf': "Random Forest — SHAP",
-        'shap_lr': "Regressão Logística — SHAP",
-        'shap_svm': "SVM — SHAP",
-        'shap_knn': "KNN — SHAP",
-        'umap': "Mapa Populacional — UMAP",
+        'comite': "Comitê: concordância dos membros",
+        'arvore': "Árvore de Decisão: regras",
+        'logistica': "Regressão Logística: contribuições",
+        'knn': "KNN: vizinhos",
+        'randomforest': "Random Forest: consenso das árvores",
+        'svm': "SVM: vetores de suporte",
+        'shap_dt': "Árvore de Decisão: SHAP",
+        'shap_rf': "Random Forest: SHAP",
+        'shap_lr': "Regressão Logística: SHAP",
+        'shap_svm': "SVM: SHAP",
+        'shap_knn': "KNN: SHAP",
+        'umap': "Mapa Populacional: UMAP",
     }
 
     def __init__(self, master, **kwargs):
@@ -204,23 +212,39 @@ class PredictView(ctk.CTkFrame):
         self.btn_run = ctk.CTkButton(ia_frame, text="Processar Diagnóstico", state="disabled", command=self.process_batch, fg_color="#27ae60", hover_color="#2ecc71")
         self.btn_run.grid(row=1, column=1, padx=20, pady=10, sticky="w")
 
-        # Opção de recusa: desligada por padrão porque muda o que o app entrega
-        # (parte do lote volta para o médico) — é decisão de quem opera.
-        self.var_adiar = ctk.BooleanVar(value=False)
+        # Opção de recusa: LIGADA por padrão. O erro que este sistema existe para
+        # evitar é o falso negativo; diante de uma certeza que não separa as
+        # classes, devolver o caso é mais seguro que arriscar um palpite. Quem
+        # opera pode desligar — mas aí é escolha explícita, não silêncio do app.
+        self.var_adiar = ctk.BooleanVar(value=True)
+        # Preferência do usuário, preservada quando um modelo sem faixa calibrada
+        # força a recusa a desligar: ao voltar para um modelo que a suporta, o
+        # padrão seguro volta com ele.
+        self._preferencia_adiar = True
         self.chk_adiar = ctk.CTkCheckBox(
-            ia_frame, text="Adiar casos incertos (coluna \"Revisar\")",
+            ia_frame, text="Adiar casos incertos em vez de decidir (padrão)",
             variable=self.var_adiar, command=self._ao_alternar_recusa,
             font=ctk.CTkFont(size=12))
         self.chk_adiar.grid(row=1, column=2, padx=(0, 20), pady=10, sticky="w")
-        # Ponto de operação em vigor: sem isto, uma certeza de 25% rotulada como
-        # "Maligno" pareceria erro em vez de decisão deliberada.
-        self.lbl_limiar = ctk.CTkLabel(ia_frame, text="", font=ctk.CTkFont(size=12),
-                                       text_color="gray", justify="left", wraplength=760)
-        self.lbl_limiar.grid(row=2, column=0, columnspan=2, padx=20, pady=(0, 4), sticky="w")
+
+        # Régua de decisão do modelo em vigor: as faixas de certeza e o que o
+        # sistema faz em cada uma. Sem ela, uma certeza de 25% rotulada como
+        # "Maligno" pareceria erro em vez de decisão deliberada — e "por que este
+        # limiar?" ficaria sem resposta na tela.
+        self.frm_regua = ctk.CTkFrame(ia_frame, fg_color="transparent")
+        self.frm_regua.grid(row=2, column=0, columnspan=3, padx=20, pady=(0, 6), sticky="ew")
+        # A folga do painel vai toda para a última coluna: sem isso, os textos
+        # longos (a justificativa, que ocupa as três) esticariam também as
+        # colunas do rótulo e da faixa, abrindo um vão no meio de cada linha.
+        self.frm_regua.grid_columnconfigure(3, weight=1)
         self._ao_trocar_modelo(self.model_selector.get())
 
+        # Vazio, este rótulo ainda ocuparia a altura de uma linha, abrindo um vão
+        # entre a régua e os avisos que a seguem — por isso sai da grade quando
+        # não há erro a mostrar (ver _mostrar_erro_inferencia).
         self.lbl_run_error = ctk.CTkLabel(ia_frame, text="", font=ctk.CTkFont(size=12), text_color="#e74c3c", justify="left")
-        self.lbl_run_error.grid(row=3, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="w")
+        self.lbl_run_error.grid(row=3, column=0, columnspan=3, padx=20, pady=(0, 10), sticky="w")
+        self.lbl_run_error.grid_remove()
         # Aviso de perfis atípicos (fora da distribuição de treino), preenchido após a inferência.
         self.lbl_ood = ctk.CTkLabel(ia_frame, text="", font=ctk.CTkFont(size=12), justify="left", wraplength=760)
         self.lbl_ood.grid(row=4, column=0, columnspan=2, padx=20, pady=(0, 4), sticky="w")
@@ -294,7 +318,18 @@ class PredictView(ctk.CTkFrame):
         self.preview_frame = ctk.CTkFrame(container)
         self.preview_frame.grid(row=7, column=0, padx=20, pady=10, sticky="nsew")
         self.preview_frame.grid_columnconfigure(0, weight=1)
-        self.preview_frame.grid_rowconfigure(1, weight=1) 
+        self.preview_frame.grid_rowconfigure(1, weight=1)
+
+        # Legenda das colunas de saída. Elas respondem a perguntas diferentes
+        # (o que foi decidido, com quanta evidência, quão firme, e se a evidência
+        # vale para este paciente) e, lado a lado, eram lidas como variações da
+        # mesma coisa. O tooltip de cabeçalho continua existindo para o detalhe;
+        # a legenda existe porque ninguém descobre um tooltip sem procurá-lo.
+        self.lbl_legenda = ctk.CTkLabel(
+            self.preview_frame, text="", font=ctk.CTkFont(size=11),
+            text_color="gray", justify="left", wraplength=1000)
+        self.lbl_legenda.grid(row=0, column=0, padx=10, pady=(10, 0), sticky="w")
+        self.lbl_legenda.grid_remove()
 
         self.tree = ttk.Treeview(self.preview_frame, show="headings", height=15)
         self.tree.grid(row=1, column=0, padx=(10, 0), pady=(10, 0), sticky="nsew")
@@ -362,7 +397,7 @@ class PredictView(ctk.CTkFrame):
             self.lbl_standardize_error.configure(text="")
             self.model_selector.configure(state="disabled")
             self.btn_run.configure(state="disabled")
-            self.lbl_run_error.configure(text="")
+            self._mostrar_erro_inferencia("")
             self.btn_audit.configure(state="disabled")
             self._limpar_auditoria()
             self.btn_export_csv.configure(state="disabled")
@@ -400,9 +435,10 @@ class PredictView(ctk.CTkFrame):
                 modelo_escolhido = self.model_selector.get()
                 self.df_resultado = self.predictor.predict(self.df_padronizado, self.df_limpo, modelo_escolhido)
                 self._update_treeview_with_data(self.df_resultado)
-                self.lbl_run_error.configure(text="")
+                self._mostrar_erro_inferencia("")
                 self._atualizar_aviso_ood()
                 self._atualizar_aviso_limitrofe()
+                self._atualizar_legenda(modelo_escolhido)
 
                 # Libera o Passo 4 após a IA rodar
                 self.btn_audit.configure(state="normal")
@@ -432,7 +468,7 @@ class PredictView(ctk.CTkFrame):
                     self._relatorio_para_historico() or None, adiados,
                 )
             except Exception as e:
-                self.lbl_run_error.configure(text=f"Erro durante a inferência: {e}")
+                self._mostrar_erro_inferencia(f"Erro durante a inferência: {e}")
 
     def _atualizar_aviso_ood(self):
         """
@@ -452,7 +488,7 @@ class PredictView(ctk.CTkFrame):
         if atipicos:
             self.lbl_ood.configure(
                 text=(f"⚠ {atipicos} de {total} paciente(s) com perfil atípico (fora da distribuição "
-                      f"de treino) — interprete essas previsões com cautela."),
+                      f"de treino). Interprete essas previsões com cautela."),
                 text_color="#e67e22",
             )
         else:
@@ -463,37 +499,23 @@ class PredictView(ctk.CTkFrame):
 
     def _ao_trocar_modelo(self, modelo: str):
         """
-        Exibe o ponto de operação do modelo selecionado no Passo 3.
+        Redesenha a régua de decisão do modelo selecionado no Passo 3.
 
         Parameters
         ----------
         modelo : str
             Nome escolhido no seletor.
         """
-        politica = self.predictor.politica
-        if modelo == self.NOME_TODOS:
-            texto = ("Cada modelo decide pelo seu próprio limiar calibrado."
-                     if politica.calibrada else
-                     "Limiar de decisão: 50% (padrão, sem calibração de operação).")
-        elif modelo in self.predictor.MODELOS_SEM_CERTEZA:
-            texto = ("A Árvore de Decisão não fornece probabilidade utilizável "
-                     "(folhas puras): decide pelas próprias regras, sem limiar ajustável.")
-        else:
-            texto = politica.resumo(modelo)
-
         # A recusa exige faixa calibrada; nem todo modelo tem uma (o KNN só
         # consegue não errar adiando dois terços do lote — ver o script de
-        # calibração), e a Árvore não tem probabilidade para comparar.
-        if self._recusa_disponivel(modelo):
-            self.chk_adiar.configure(state="normal")
-        else:
-            self.chk_adiar.configure(state="disabled")
-            if self.var_adiar.get():
-                self.var_adiar.set(False)
-                self._ao_alternar_recusa()
-            texto += "  (Recusa indisponível para este modelo.)"
+        # calibração), e a Árvore não tem probabilidade para comparar. Quando o
+        # modelo não a suporta, a recusa desliga sem apagar a preferência.
+        disponivel = self._recusa_disponivel(modelo)
+        self.chk_adiar.configure(state="normal" if disponivel else "disabled")
+        self.var_adiar.set(self._preferencia_adiar and disponivel)
+        self.predictor.politica.adiar_incertos = bool(self.var_adiar.get())
 
-        self.lbl_limiar.configure(text=texto)
+        self._desenhar_regua(modelo, recusa_disponivel=disponivel)
 
     def _recusa_disponivel(self, modelo: str) -> bool:
         """True se o modelo escolhido pode adiar casos incertos."""
@@ -503,47 +525,247 @@ class PredictView(ctk.CTkFrame):
         return politica.pode_adiar(modelo)
 
     def _ao_alternar_recusa(self):
-        """Liga ou desliga a recusa e reflete a mudança no texto do Passo 3."""
-        self.predictor.politica.adiar_incertos = bool(self.var_adiar.get())
+        """Registra a escolha do usuário sobre a recusa e redesenha a régua."""
+        self._preferencia_adiar = bool(self.var_adiar.get())
         self._ao_trocar_modelo(self.model_selector.get())
+
+    # --- Régua de decisão (Passo 3) ---------------------------------------
+
+    # Cor de cada faixa da régua: a mesma que os relatórios usam para a classe,
+    # para que "verde = liberado, laranja = não decidido, vermelho = acusado"
+    # signifique o mesmo em todas as telas.
+    _COR_FAIXA = {
+        ROTULO_BENIGNO: COR_BENIGNO,
+        ROTULO_MALIGNO: COR_MALIGNO,
+        ROTULO_REVISAR: COR_REVISAR,
+        ZONA_LIMITROFE: COR_REVISAR,
+    }
+
+    def _desenhar_regua(self, modelo: str, recusa_disponivel: bool):
+        """
+        Monta o painel que mostra, por extenso, como o modelo decide.
+
+        São duas perguntas, e a tela responde às duas: *em que faixa de certeza
+        cada resposta é dada* (a régua propriamente dita) e *por que os cortes
+        estão ali* (a justificativa embaixo). Para "Todos (Comparação)" a régua
+        vira uma tabela — um modelo por linha —, que é a forma de comparar os
+        limiares lado a lado.
+
+        Parameters
+        ----------
+        modelo : str
+            Nome escolhido no seletor.
+        recusa_disponivel : bool
+            Se o modelo suporta adiar casos incertos; quando não, a tela diz
+            por quê, para a caixa desabilitada não parecer defeito.
+        """
+        for filho in self.frm_regua.winfo_children():
+            filho.destroy()
+
+        if modelo == self.NOME_TODOS:
+            linha = self._regua_comparativa()
+        elif modelo in self.predictor.MODELOS_SEM_CERTEZA:
+            linha = self._regua_sem_certeza(modelo)
+        else:
+            linha = self._regua_de_um_modelo(modelo)
+
+        if not recusa_disponivel and modelo not in self.predictor.MODELOS_SEM_CERTEZA:
+            self._nota_regua(
+                linha,
+                "Adiar casos incertos não está disponível aqui: a calibração não encontrou, "
+                "para este modelo, uma faixa que valha a pena adiar (ver "
+                "scripts/calibrar_limiares.py). Ele decide todos os casos.")
+
+    def _titulo_regua(self, linha: int, texto: str) -> int:
+        """Escreve o título do painel e devolve a próxima linha livre."""
+        ctk.CTkLabel(self.frm_regua, text=texto,
+                     font=ctk.CTkFont(size=12, weight="bold")).grid(
+            row=linha, column=0, columnspan=4, pady=(0, 2), sticky="w")
+        return linha + 1
+
+    def _nota_regua(self, linha: int, texto: str) -> int:
+        """Escreve um parágrafo cinza abaixo da régua e devolve a próxima linha."""
+        ctk.CTkLabel(self.frm_regua, text=texto, font=ctk.CTkFont(size=11),
+                     text_color="gray", justify="left", wraplength=900).grid(
+            row=linha, column=0, columnspan=4, pady=(4, 0), sticky="w")
+        return linha + 1
+
+    def _regua_de_um_modelo(self, modelo: str) -> int:
+        """Desenha a régua de um modelo só (uma linha por faixa de certeza)."""
+        politica = self.predictor.politica
+        linha = self._titulo_regua(0, f"Régua de decisão: {modelo}")
+
+        for faixa in politica.regua(modelo):
+            cor = self._COR_FAIXA.get(faixa['rotulo'], "gray")
+            ctk.CTkLabel(self.frm_regua, text=f"■ {faixa['rotulo']}", text_color=cor,
+                         font=ctk.CTkFont(size=12, weight="bold"), anchor="w",
+                         width=110).grid(row=linha, column=0, sticky="w")
+            ctk.CTkLabel(self.frm_regua, text=faixa['faixa'], font=ctk.CTkFont(size=12),
+                         anchor="w", width=150).grid(row=linha, column=1, sticky="w")
+            ctk.CTkLabel(self.frm_regua, text=faixa['efeito'], font=ctk.CTkFont(size=11),
+                         text_color="gray", anchor="w", justify="left",
+                         wraplength=620).grid(row=linha, column=2, sticky="w")
+            linha += 1
+
+        return self._nota_regua(linha, politica.justificativa(modelo))
+
+    def _regua_comparativa(self) -> int:
+        """
+        Desenha os cortes de todos os modelos numa tabela, para comparação.
+
+        No modo "Todos" não há uma régua só: cada modelo tem a sua, e é
+        exatamente a diferença entre elas que a comparação existe para mostrar.
+        """
+        politica = self.predictor.politica
+        linha = self._titulo_regua(0, "Limiares de decisão: um por modelo")
+
+        cabecalho = ("Modelo", "Decide Benigno", "Faixa incerta", "Decide Maligno")
+        for coluna, texto in enumerate(cabecalho):
+            ctk.CTkLabel(self.frm_regua, text=texto, font=ctk.CTkFont(size=11, weight="bold"),
+                         text_color="gray", anchor="w",
+                         width=(190 if coluna == 0 else 150)).grid(
+                row=linha, column=coluna, sticky="w")
+        linha += 1
+
+        for nome in self.model_loader.models:
+            celulas = self._celulas_da_regua(nome)
+            ctk.CTkLabel(self.frm_regua, text=nome, font=ctk.CTkFont(size=12),
+                         anchor="w").grid(row=linha, column=0, sticky="w")
+            for coluna, (texto, cor) in enumerate(celulas, start=1):
+                ctk.CTkLabel(self.frm_regua, text=texto, font=ctk.CTkFont(size=12),
+                             text_color=cor, anchor="w").grid(
+                    row=linha, column=coluna, sticky="w")
+            linha += 1
+
+        criterio = ("Cada modelo tem o seu corte porque cada um calibra as probabilidades à sua "
+                    "maneira; o critério é o mesmo para todos, e está descrito ao selecionar um "
+                    "modelo específico." if politica.calibrada else
+                    "Sem data/limiares.json, todos os modelos operam no corte padrão de 50% do "
+                    "scikit-learn.")
+        return self._nota_regua(linha, criterio)
+
+    def _celulas_da_regua(self, modelo: str) -> list:
+        """
+        As três células (Benigno, faixa incerta, Maligno) de um modelo na tabela.
+
+        Returns
+        -------
+        list[tuple[str, str]]
+            Pares (texto, cor) na ordem das colunas.
+        """
+        politica = self.predictor.politica
+        if modelo in self.predictor.MODELOS_SEM_CERTEZA:
+            return [("—", "gray"), ("sem limiar: decide por regras", "gray"), ("—", "gray")]
+
+        faixas = {f['rotulo']: f for f in politica.regua(modelo)}
+        incerta = faixas.get(ROTULO_REVISAR) or faixas.get(ZONA_LIMITROFE)
+        sufixo = f" ({incerta['rotulo']})" if incerta else ""
+        return [
+            (faixas[ROTULO_BENIGNO]['faixa'] if ROTULO_BENIGNO in faixas else "—", COR_BENIGNO),
+            (f"{incerta['faixa']}{sufixo}" if incerta else "—", COR_REVISAR),
+            (faixas[ROTULO_MALIGNO]['faixa'] if ROTULO_MALIGNO in faixas else "—", COR_MALIGNO),
+        ]
+
+    def _regua_sem_certeza(self, modelo: str) -> int:
+        """Painel do modelo que não tem probabilidade para comparar a limiar algum."""
+        linha = self._titulo_regua(0, f"Régua de decisão: {modelo}")
+        return self._nota_regua(
+            linha,
+            f"A {modelo} não tem limiar ajustável. Suas folhas são puras, então a "
+            f"probabilidade sai sempre 0% ou 100% e não há o que deslocar. Ela decide pela "
+            f"sequência de regras que aprendeu, e por isso não recebe as colunas de certeza "
+            f"e de zona, nem entra no comitê.")
+
+    def _mostrar_erro_inferencia(self, texto: str):
+        """Exibe (ou esconde, quando ``texto`` é vazio) o erro do Passo 3."""
+        self.lbl_run_error.configure(text=texto)
+        if texto:
+            self.lbl_run_error.grid()
+        else:
+            self.lbl_run_error.grid_remove()
+
+    def _atualizar_legenda(self, modelo: str):
+        """
+        Escreve, acima da tabela, o que cada coluna de saída significa.
+
+        Parameters
+        ----------
+        modelo : str
+            Nome escolhido no seletor, para citar os cortes em vigor.
+        """
+        df = self.df_resultado
+        if df is None:
+            self.lbl_legenda.grid_remove()
+            return
+
+        if 'Diagnóstico_IA' not in df.columns:
+            # Modo de comparação: uma coluna por modelo, cada uma com o corte do
+            # seu próprio modelo — que é justamente o que a tabela acima lista.
+            self.lbl_legenda.configure(
+                text=("Colunas:   IA_XXX: o que cada modelo entregaria para o paciente, cada um "
+                      "pelo seu próprio limiar (a tabela do Passo 3 lista todos)   ·   "
+                      "Perfil: se o paciente se parece com os casos de treino "
+                      "(\"Atípico\" quer dizer que o modelo está extrapolando)"))
+            self.lbl_legenda.grid()
+            return
+
+        partes = ["Diagnóstico_IA: o que o sistema entrega para o paciente"]
+        if 'Certeza_Maligno(%)' in df.columns:
+            regra = self.predictor.politica.regra(modelo)
+            partes.append(f"Certeza_Maligno(%): a evidência, lida nesta régua: {regra}")
+        if COLUNA_ZONA in df.columns:
+            partes.append(f"{COLUNA_ZONA}: em qual dessas faixas a certeza caiu")
+        if 'Perfil' in df.columns:
+            partes.append("Perfil: se o paciente se parece com os casos de treino "
+                          "(\"Atípico\" quer dizer que o modelo está extrapolando)")
+
+        self.lbl_legenda.configure(text="Colunas:   " + "   ·   ".join(partes))
+        self.lbl_legenda.grid()
 
     def _atualizar_aviso_limitrofe(self):
         """
-        Atualiza o aviso de decisões limítrofes (certeza perto do limiar de operação).
+        Resume, em uma linha, quantos casos caíram na faixa incerta da régua.
 
-        Lê a coluna ``Decisão`` do resultado (preenchida pelo PredictorEngine) e
-        resume quantos casos são limítrofes — decisões incertas em que um pequeno
-        deslocamento inverteria o diagnóstico, recomendando revisão humana. Quando
-        o modelo não fornece certeza (ex.: Árvore de Decisão), o aviso fica vazio.
+        Lê a coluna de zona do resultado (preenchida pelo PredictorEngine) e
+        conta os que o modelo devolveu ou marcou como limítrofes. O texto cita a
+        faixa em números, para que o total apareça ao lado do critério que o
+        produziu. Quando o modelo não fornece certeza (ex.: Árvore de Decisão),
+        o aviso fica vazio.
         """
         df = self.df_resultado
-        if df is None or 'Decisão' not in df.columns:
+        if df is None or COLUNA_ZONA not in df.columns:
             self.lbl_limitrofe.configure(text="")
             return
 
+        modelo = self.model_selector.get()
+        inferior, superior = self.predictor.politica.faixa_incerta(modelo)
+        faixa = f"{inferior * 100:.1f}% a {superior * 100:.1f}%"
+
         total = len(df)
-        adiados = int((df['Decisão'] == ROTULO_REVISAR).sum())
+        adiados = int((df[COLUNA_ZONA] == ROTULO_REVISAR).sum())
         if adiados:
             # Com a recusa ligada, o adiamento substitui o aviso de limítrofe:
             # não há decisão a rever, e sim decisão nenhuma.
             self.lbl_limitrofe.configure(
-                text=(f"⏸ {adiados} de {total} caso(s) devolvido(s) para revisão — o modelo se "
-                      f"absteve por não ter certeza suficiente. Os outros {total - adiados} "
-                      f"receberam diagnóstico."),
+                text=(f"⏸ {adiados} de {total} caso(s) devolvido(s) para revisão. A certeza ficou "
+                      f"dentro da faixa incerta ({faixa}), onde o modelo não decide. Os outros "
+                      f"{total - adiados} receberam diagnóstico."),
                 text_color="#e67e22",
             )
             return
 
-        limitrofes = int((df['Decisão'] == 'Limítrofe').sum())
+        limitrofes = int((df[COLUNA_ZONA] == ZONA_LIMITROFE).sum())
         if limitrofes:
             self.lbl_limitrofe.configure(
-                text=(f"⚠ {limitrofes} de {total} caso(s) limítrofe(s) (certeza perto do limiar "
-                      f"de decisão) — recomenda-se revisão."),
+                text=(f"⚠ {limitrofes} de {total} caso(s) limítrofe(s). A certeza ficou dentro de "
+                      f"{faixa}, perto demais do limiar para a decisão ser firme. "
+                      f"Recomenda-se revisão."),
                 text_color="#e67e22",
             )
         else:
             self.lbl_limitrofe.configure(
-                text=f"✓ Nenhuma decisão limítrofe entre os {total} casos.",
+                text=(f"✓ Nenhum dos {total} casos caiu na faixa incerta ({faixa}). "
+                      f"Todas as decisões saíram com folga."),
                 text_color="#2ecc71",
             )
 
@@ -765,7 +987,7 @@ class PredictView(ctk.CTkFrame):
             self._abrir_relatorio(opcoes[labels[0]])
         else:
             self.lbl_report_hint.configure(
-                text=f"{len(labels)} relatórios prontos — escolha e clique em Abrir.",
+                text=f"{len(labels)} relatórios prontos. Escolha um e clique em Abrir.",
                 text_color="#2ecc71")
 
     def _batch_2d_para_svm(self):
@@ -941,7 +1163,7 @@ class PredictView(ctk.CTkFrame):
 
         certezas = df['Certeza_Maligno(%)'] if 'Certeza_Maligno(%)' in df.columns else None
         perfis = df['Perfil'] if 'Perfil' in df.columns else None
-        decisoes = df['Decisão'] if 'Decisão' in df.columns else None
+        decisoes = df[COLUNA_ZONA] if COLUNA_ZONA in df.columns else None
 
         pacientes = []
         for i in range(len(indices)):
@@ -989,6 +1211,7 @@ class PredictView(ctk.CTkFrame):
 
                 # 2. Atualiza a tabela na tela para mostrar a nova coluna "Diagnóstico_Real"
                 self._update_treeview_with_data(self.df_resultado)
+                self._atualizar_legenda(self.model_selector.get())
 
                 # 3. Avalia cada modelo contra o gabarito (matriz de confusão e derivadas)
                 metricas = avaliar_modelos(
@@ -1189,12 +1412,20 @@ class PredictView(ctk.CTkFrame):
                 adiados = int((diagnosticos == ROTULO_REVISAR).sum())
             else:
                 malignos = benignos = None
+            modelo = self.model_selector.get()
             meta = {
                 'arquivo': self.file_path_var.get().replace("Arquivo selecionado: ", ""),
-                'modelo': self.model_selector.get(),
+                'modelo': modelo,
                 'total': total, 'malignos': malignos, 'benignos': benignos,
                 'adiados': adiados,
             }
+            # O ponto de operação viaja junto: fora do app, uma linha "Maligno,
+            # certeza 25%" só é conferível se o corte que a gerou estiver na
+            # mesma folha. Modelos sem probabilidade (Árvore) não têm régua.
+            if modelo not in self.predictor.MODELOS_SEM_CERTEZA and modelo != self.NOME_TODOS:
+                politica = self.predictor.politica
+                meta['regua'] = politica.regua(modelo)
+                meta['justificativa'] = politica.justificativa(modelo)
             nomes_modelo = {
                 'arvore': self.NOME_ARVORE, 'logistica': self.NOME_LOGISTICA,
                 'knn': self.NOME_KNN, 'randomforest': self.NOME_RF, 'svm': self.NOME_SVM,
@@ -1221,6 +1452,10 @@ class PredictView(ctk.CTkFrame):
         df : pandas.DataFrame
             DataFrame contendo os dados a serem renderizados visualmente na tabela.
         """
+        # A legenda descreve as colunas de saída; ela volta (via
+        # _atualizar_legenda) quando o que se está mostrando é o resultado da IA.
+        self.lbl_legenda.grid_remove()
+
         self.tree.delete(*self.tree.get_children())
         colunas = list(df.columns)
         self.tree["columns"] = colunas

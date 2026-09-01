@@ -67,7 +67,7 @@ class ShapReportWindow(ctk.CTkToplevel):
             Argumentos adicionais para o CTkToplevel.
         """
         super().__init__(master, **kwargs)
-        self.title(f"Relatório SHAP — {titulo}")
+        self.title(f"Relatório SHAP: {titulo}")
         responsive_geometry(self, 1040, 820)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -106,7 +106,7 @@ class ShapReportWindow(ctk.CTkToplevel):
         header.grid(row=0, column=0, columnspan=2, sticky="ew", padx=20, pady=(20, 6))
 
         ctk.CTkLabel(
-            header, text=f"Relatório SHAP — {self._titulo}",
+            header, text=f"Relatório SHAP: {self._titulo}",
             font=ctk.CTkFont(size=22, weight="bold"),
         ).pack(anchor="w")
 

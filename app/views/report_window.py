@@ -49,7 +49,7 @@ class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             Argumentos adicionais para o construtor do CTkToplevel.
         """
         super().__init__(master, **kwargs)
-        self.title("Relatório de Explicabilidade — Árvore de Decisão")
+        self.title("Relatório de Explicabilidade: Árvore de Decisão")
         responsive_geometry(self, 980, 740)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)

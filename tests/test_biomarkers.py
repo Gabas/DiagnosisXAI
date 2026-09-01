@@ -21,6 +21,7 @@ from core.biomarkers import (
     rotulo_amigavel,
     separar_coluna,
 )
+from core.decision import COLUNA_ZONA
 
 
 @pytest.fixture(scope="module")
@@ -64,6 +65,10 @@ def test_descricao_colunas_de_resultado():
     assert 'calibrada' in descricao_coluna('Certeza_Maligno(%)')
     assert 'RF' in descricao_coluna('IA_RF')
     assert 'Atípico' in descricao_coluna('Perfil')
+    # A coluna de zona precisa nomear as três saídas possíveis: sem 'Revisar',
+    # o usuário lê a abstenção como se fosse um diagnóstico.
+    zona = descricao_coluna(COLUNA_ZONA)
+    assert all(termo in zona for termo in ('Definida', 'Limítrofe', 'Revisar'))
 
 
 def test_descricao_none_para_desconhecida():
