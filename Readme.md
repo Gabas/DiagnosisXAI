@@ -726,19 +726,23 @@ ausente, o app recorre a `data/umap_train_2d.npy`.
 
 ## 16. Cronograma
 
-| Etapa | Mar | Abr | Mai | Jun | Jul | Ago | Set |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Proposta e Revisão Bibliográfica | ✓ | | | | | | |
-| EDA, Limpeza de Dados e UMAP | ✓ | | | | | | |
-| Fundamentação Teórica e Metodologia | ✓ | ✓ | | | | | |
-| Treinamento e Seleção do Modelo | | ✓ | | | | | |
-| Interpretabilidade (SHAP) | | ✓ | ✓ | | | | |
-| **Entrega PG I** | | | ✓ | | | | |
-| Processamento em Lote (Upload) | | | ✓ | | | | |
-| Geração de Relatórios (PDF/CSV) | | | ✓ | ✓ | | | |
-| Redação de Resultados e Conclusão | | | | ✓ | ✓ | | |
-| Testes e Correção de Bugs | | | | | ✓ | ✓ | |
-| Formatação ABNT e Revisão Final | | | | | | ✓ | ✓ |
+| Etapas do Projeto | Mar | Abr | Mai | Jun | Jul | Ago | Set | Out | Nov |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Elaboração da Proposta e Revisão Bibliográfica | ✓ | | | | | | | | |
+| Ingestão, EDA, Limpeza de Dados e Visualização com UMAP | ✓ | | | | | | | | |
+| Redação da Fundamentação Teórica e Metodologia | ✓ | ✓ | | | | | | | |
+| Treinamento, Testes e Seleção do Modelo Preditivo | | ✓ | | | | | | | |
+| Implementação e Análise de Interpretabilidade (SHAP) | | ✓ | ✓ | | | | | | |
+| **Entrega e avaliação do PG I** | | | ✓ | | | | | | |
+| Desenvolvimento do processamento em lote (Upload de Planilhas) | | | ✓ | | | | | | |
+| Implementação da Geração de Relatórios automatizados (PDF/CSV) | | | ✓ | ✓ | | | | | |
+| Validação cruzada, testes de significância e calibração | | | | ✓ | ✓ | | | | |
+| Explicabilidade por modelo, comitê e sinalização de confiabilidade | | | | | ✓ | ✓ | | | |
+| Testes automatizados e correção de bugs | | | | | ✓ | ✓ | | | |
+| Redação do Desenvolvimento do Software, Resultados e Conclusão | | | | | | ✓ | ✓ | | |
+| Validação final do sistema e ajustes | | | | | | | ✓ | ✓ | |
+| Formatação ABNT e Revisão Final | | | | | | | | ✓ | ✓ |
+| **Entrega e defesa do PG II** | | | | | | | | | ✓ |
 
 ---
 
