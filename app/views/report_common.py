@@ -37,7 +37,8 @@ class PatientPDFExportMixin:
     um ``ctk.CTkTextbox`` em ``self._detalhe`` (texto explicativo do
     paciente selecionado). Se a janela também mantiver um gráfico
     matplotlib em ``self._canvas`` (mapa UMAP, vizinhos, etc.), a figura é
-    embutida no PDF.
+    embutida no PDF. Uma janela com mais de um gráfico (caso do SVM: mapa +
+    margem) pode expor ``_figuras_pdf()`` e devolver todos eles.
     """
 
     def _exportar_pdf_paciente(self):
@@ -58,7 +59,10 @@ class PatientPDFExportMixin:
             return
 
         try:
-            figura = self._canvas.figure if hasattr(self, "_canvas") else None
+            if hasattr(self, "_figuras_pdf"):
+                figura = self._figuras_pdf()
+            else:
+                figura = self._canvas.figure if hasattr(self, "_canvas") else None
             export_patient_report(
                 caminho, self.title(), paciente,
                 self._detalhe.get("1.0", "end"), figura=figura,

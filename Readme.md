@@ -392,11 +392,16 @@ discordância, fronteira ou cautela da política).
 
 **SVM — vetores de suporte e margem**
 
-Mapa populacional com os vetores de suporte em destaque e o balanço de forças por
-paciente. A margem, a "rua" entre `z = −1` e `z = +1` que o SVM maximiza, tem versão
-interativa no navegador.
+No mapa populacional, a cor de cada paciente de treino é o seu escore `z`
+(`decision_function`) real, e os vetores de suporte ganham anel: branco para os que
+estão dentro da margem, cinza para os de fora. Abaixo, o painel da margem — o eixo
+horizontal **é** o `z`, então a "rua" entre `z = −1` e `z = +1` que o SVM maximiza e a
+fronteira em `z = 0` são exatas, sem aproximação. Por paciente, o balanço de forças
+entre os vetores de suporte dos dois lados.
 
 <img src="docs/img/09-xai-svm.png" alt="Relatório do SVM">
+
+<img src="docs/img/09b-xai-svm-margem.png" alt="Painel da margem do SVM">
 
 </td>
 </tr>
@@ -478,6 +483,16 @@ As telas da **Regressão Logística, do KNN e do SVM** trazem barra de zoom e pa
 gráfico embutido. O **mapa populacional** e a **margem do SVM** oferecem ainda versões
 interativas em **Bokeh** (hover com os dados do paciente, zoom, legenda clicável) abertas
 no navegador.
+
+> **Por que a margem do SVM não é uma linha sobre o mapa.** Seria a visualização
+> intuitiva, mas o UMAP não tem inversa: não há como avaliar a `decision_function` num
+> ponto arbitrário do plano, só interpolar o escore dos pacientes vizinhos. Medida por
+> *leave-one-out* sobre o treino, essa interpolação acerta o lado da fronteira em ~96%
+> dos casos — e ainda assim **desenharia metade dos pacientes de `|z| < 1` fora da
+> margem**, errando justamente nos limítrofes, que são o motivo de a margem existir. Por
+> isso o `z` aparece só onde é exato: como cor de cada ponto no mapa e como eixo do
+> painel da margem. É o mesmo critério aplicado ao detector de perfil atípico em
+> [Confiabilidade da predição](#7-confiabilidade-da-predição).
 
 ---
 
@@ -654,7 +669,7 @@ DiagnosisXAI/
 │   │   ├── about_view.py            # Aba Sobre (memorial de cálculo + glossário)
 │   │   ├── info_window.py           # Janelas de detalhamento
 │   │   ├── report_common.py         # Base compartilhada das janelas de relatório
-│   │   ├── report_launchers.py      # Construtores de SHAP e UMAP (app e histórico)
+│   │   ├── report_launchers.py      # Construtores de SHAP, UMAP e escores do SVM
 │   │   ├── report_window.py         # Árvore de Decisão
 │   │   ├── report_window_comite.py  # Comitê
 │   │   ├── report_window_knn.py     # KNN

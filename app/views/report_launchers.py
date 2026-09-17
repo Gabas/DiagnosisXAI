@@ -63,6 +63,37 @@ def projetar_umap(loader, X_scaled_batch):
     return np.einsum('nk,nkd->nd', pesos, emb[vizinhos])
 
 
+def escores_svm_treino(loader):
+    """
+    Escore de decisão (exato) do SVM para cada paciente de treino.
+
+    O relatório do SVM usa esses valores para colorir o mapa populacional e para
+    situar o lote na distribuição do treino. É calculado aqui, e não no
+    ``SVMExplainer``, porque o explicador guarda apenas os vetores de suporte —
+    o conjunto de treino completo vive no ModelLoader. Assim o mapa colorido
+    funciona com o ``wisconsin.pkl`` atual, sem regenerá-lo.
+
+    Parameters
+    ----------
+    loader : ModelLoader
+        Fonte de ``X_train_scaled`` e do modelo 'SVM'.
+
+    Returns
+    -------
+    list ou None
+        ``decision_function`` de cada paciente de treino, na mesma ordem de
+        ``X_train_scaled`` (e do embedding UMAP). None se o modelo ou o treino
+        padronizado não estiverem disponíveis.
+    """
+    modelo = loader.models.get('SVM') if getattr(loader, 'models', None) else None
+    if modelo is None or loader.X_train_scaled is None:
+        return None
+    try:
+        return modelo.decision_function(np.asarray(loader.X_train_scaled)).tolist()
+    except Exception:
+        return None
+
+
 def abrir_umap(master, loader, batch_2d, pacientes):
     """
     Abre o Mapa Populacional (UMAP) a partir da projeção do lote.

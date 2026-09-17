@@ -430,7 +430,10 @@ SECOES = (
                 "f(x) = Σ αᵢ·yᵢ·K(x, svᵢ) + b",
                 "Cada vetor de suporte empurra a decisão com o seu próprio peso, e o relatório "
                 "lista os que mais empurraram naquele paciente. O valor de f(x) é a distância "
-                "com sinal até a fronteira, e é ele que forma o eixo do gráfico da margem.",
+                "com sinal até a fronteira: é ele que forma o eixo do gráfico da margem e a cor "
+                "de cada ponto no mapa. A margem não é traçada como linha sobre o mapa porque a "
+                "projeção 2D não tem volta — não há como calcular f(x) num ponto qualquer do "
+                "plano, só interpolar, e a interpolação erra justamente nos casos limítrofes.",
             ),
             (
                 "SHAP",

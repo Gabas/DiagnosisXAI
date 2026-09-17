@@ -950,7 +950,7 @@ class PredictView(ctk.CTkFrame):
             self._gerar_exato('svm', self.NOME_SVM, lambda: {
                 'importancias': exp.global_importances(top_n=10),
                 'explicacoes': exp.explain(self.df_padronizado),
-                'contexto': exp.contexto(),
+                'contexto': self._contexto_svm(exp),
                 'batch_2d': self._batch_2d_para_svm(),
             })
 
@@ -989,6 +989,34 @@ class PredictView(ctk.CTkFrame):
             self.lbl_report_hint.configure(
                 text=f"{len(labels)} relatórios prontos. Escolha um e clique em Abrir.",
                 text_color="#2ecc71")
+
+    def _contexto_svm(self, exp) -> dict:
+        """
+        Monta o contexto do relatório do SVM: o do explicador + os escores do treino.
+
+        O ``SVMExplainer`` não guarda o treino completo (só os vetores de
+        suporte), então o escore de decisão de cada paciente de treino — que o
+        relatório usa para colorir o mapa e desenhar a distribuição sob a
+        margem — é calculado aqui, a partir do ModelLoader.
+
+        Parameters
+        ----------
+        exp : core.explainers.SVMExplainer
+            Explicador do SVM já carregado.
+
+        Returns
+        -------
+        dict
+            ``exp.contexto()`` acrescido de 'train_z' (ausente se o treino
+            padronizado não estiver disponível).
+        """
+        from views import report_launchers
+
+        contexto = exp.contexto()
+        train_z = report_launchers.escores_svm_treino(self.model_loader)
+        if train_z is not None:
+            contexto['train_z'] = train_z
+        return contexto
 
     def _batch_2d_para_svm(self):
         """

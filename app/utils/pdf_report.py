@@ -199,20 +199,29 @@ def export_patient_report(path: str, titulo_janela: str, paciente_id, texto_deta
         Identificador do paciente selecionado.
     texto_detalhe : str
         Conteúdo do painel de detalhe (mesmo texto exibido na janela).
-    figura : matplotlib.figure.Figure ou None
-        Gráfico da janela (mapa populacional, vizinhos, etc.), se houver.
+    figura : matplotlib.figure.Figure, sequência de figuras, ou None
+        Gráfico(s) da janela (mapa populacional, vizinhos, margem, etc.).
+        Uma sequência é embutida na ordem dada — o relatório do SVM usa isso
+        para juntar o mapa e o painel da margem no mesmo PDF.
     """
     doc = SimpleDocTemplate(path, pagesize=A4, **_MARGENS)
     story = _cabecalho(titulo_janela)
     story.append(Paragraph(f"Paciente selecionado: {_escapar_html(str(paciente_id))}", _ESTILOS['Normal']))
     story.append(Spacer(1, 0.4 * cm))
 
-    if figura is not None:
+    if figura is None:
+        figuras = []
+    elif isinstance(figura, (list, tuple)):
+        figuras = [f for f in figura if f is not None]
+    else:
+        figuras = [figura]
+
+    for fig in figuras:
         buffer = io.BytesIO()
-        figura.savefig(buffer, format='png', dpi=150, facecolor=figura.get_facecolor())
+        fig.savefig(buffer, format='png', dpi=150, facecolor=fig.get_facecolor())
         buffer.seek(0)
         largura = 15 * cm
-        altura = largura * figura.get_figheight() / figura.get_figwidth()
+        altura = largura * fig.get_figheight() / fig.get_figwidth()
         story.append(Image(buffer, width=largura, height=altura))
         story.append(Spacer(1, 0.4 * cm))
 
