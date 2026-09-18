@@ -230,6 +230,21 @@ Os arquivos de exemplo já estão em `data/`:
 | `dataTeste_sem_diagnostico.csv` | Entrada do Passo 1 |
 | `dataTeste_com_diagnostico.csv` | Gabarito do Passo 4 |
 
+O Passo 2 valida a planilha antes de qualquer conta (`core/validacao.py`) e recusa o lote
+inteiro, com mensagem que nomeia a coluna e a linha do arquivo:
+
+| Problema | O que o Passo 2 responde |
+|---|---|
+| Coluna de biomarcador faltando | *Falta 1 das 30 colunas de biomarcadores: `radius_mean`…* |
+| Célula vazia | *A planilha tem 1 célula vazia na coluna `radius_mean` — a primeira na linha 2* |
+| Texto onde era número | *A coluna `radius_mean` tem texto onde era esperado número: `'abc'` na linha 6* |
+| Valor negativo em escala bruta | *Os 30 biomarcadores são medidas de tamanho e forma, todas não negativas* |
+| Planilha sem linhas | *A planilha não tem nenhuma linha de dados — só o cabeçalho* |
+
+A checagem de valor negativo vale só para a escala bruta: num lote já padronizado,
+metade dos valores é negativa por construção. Colunas a mais não são erro — são
+descartadas, como `id` e `diagnosis`.
+
 ### O resultado
 
 Além do diagnóstico, cada linha traz as colunas que dizem **o quanto confiar nele**:
@@ -537,6 +552,10 @@ composição do lote (malignos, benignos, adiados) e a acurácia quando houve au
 O histórico guarda também os **relatórios de explicabilidade embutidos**, uma sessão
 antiga pode ser reaberta com suas explicações intactas, sem reprocessar o lote.
 
+Por isso cada sessão ocupa ~370 KB, e o `history.json` **não é versionado**: ele é local
+de cada máquina e o app o cria vazio na primeira execução. O formato de um registro está
+em `data/history.example.json`.
+
 ---
 
 ## 11. Memorial de cálculo e glossário
@@ -576,7 +595,7 @@ sobre os cabeçalhos da tabela de resultados.
 ## 12. Rigor estatístico (notebook)
 
 Além do desempenho num único conjunto de teste, a **Seção 10** do notebook submete os
-modelos a quatro análises complementares:
+modelos a cinco análises complementares:
 
 | Subseção | O que responde | Método |
 |---|---|---|
@@ -584,9 +603,17 @@ modelos a quatro análises complementares:
 | **10.2** Significância | As diferenças *entre modelos* são reais ou ruído? | Teste pareado 5×2cv (Dietterich) + Friedman com pós-hoc de Nemenyi (α = 0,05) |
 | **10.3** Calibração | A *probabilidade* prevista corresponde à frequência real? | Diagrama de confiabilidade, escore de Brier e ECE |
 | **10.4** Perfis atípicos | O paciente está dentro do que o modelo viu? | Mahalanobis com Ledoit-Wolf, corte no percentil 99 |
+| **10.5** Ponto de operação | O que a recusa custa em cobertura? | Curva risco–cobertura sobre probabilidades *out-of-fold*, com o ponto em vigor marcado |
 
 As probabilidades **recalibradas** na Seção 14.1 são as que alimentam a coluna
 `Certeza_Maligno(%)` do app.
+
+A **10.5** é a que audita a régua: recusar sempre melhora as métricas entre os casos
+decididos, então esse número isolado não significa nada — a curva mostra quanto de
+cobertura cada ganho custou. Nela se lê que o erro dos modelos está concentrado nos
+últimos casos (de 90% para 100% de cobertura, o erro do Comitê salta de 0,78% para
+5,63%) e que a faixa em vigor troca cerca de um terço do lote por zero erro entre os
+decididos no conjunto de teste.
 
 <details>
 <summary><strong>Todas as seções do notebook</strong></summary>
@@ -604,7 +631,7 @@ As probabilidades **recalibradas** na Seção 14.1 são as que alimentam a colun
 | 7 | Regressão Logística |
 | 8 | Random Forest |
 | 9 | SVM (Support Vector Machine) |
-| 10 | **Rigor estatístico** — validação cruzada, significância, calibração, OOD |
+| 10 | **Rigor estatístico** — validação cruzada, significância, calibração, OOD, ponto de operação |
 | 11 | Visualização de estrutura: UMAP e PCA |
 | 12 | Interpretabilidade com SHAP (todos os modelos) |
 | 13 | Explicabilidade interpretável (Árvore e Regressão Logística) |
@@ -620,20 +647,21 @@ As probabilidades **recalibradas** na Seção 14.1 são as que alimentam a colun
 pytest
 ```
 
-**183 testes** cobrindo `app/core/` e os utilitários. A interface gráfica não é testada.
+**199 testes** cobrindo `app/core/` e os utilitários. A interface gráfica não é testada.
 Dois grupos:
 
 - **Isolados** (`test_explainers.py`, `test_history_manager.py`, `test_pdf_report.py`,
   `test_calculos.py`, `test_decision.py`, `test_metrics.py`, `test_committee.py`,
-  `test_ood_detector.py`, `test_biomarkers.py`, `test_ui.py`, `test_bokeh_map.py`), não
+  `test_ood_detector.py`, `test_biomarkers.py`, `test_ui.py`, `test_bokeh_map.py`,
+  `test_validacao.py`), não
   dependem do `wisconsin.pkl` nem do `history.json` reais. Os explicadores são testados
   sobre modelos treinados na hora com a base pública do scikit-learn
   (`load_breast_cancer`); o foco é validar que **a decisão exibida sempre bate com a
   decisão real do modelo** (`predict` / `predict_proba` / `decision_function`), o tipo de
   inconsistência já encontrado e corrigido no SVM e no KNN durante o desenvolvimento.
 
-- **De integração**, **44 dos 183 testes** exercitam o `data/wisconsin.pkl` versionado
-  (36 em `test_predictor.py`, 4 em `test_batch_processor.py` e 4 em `test_calculos.py`).
+- **De integração**, **48 dos 199 testes** exercitam o `data/wisconsin.pkl` versionado
+  (36 em `test_predictor.py`, 8 em `test_batch_processor.py` e 4 em `test_calculos.py`).
   Servem também como *smoke test* do artefato: se o notebook for reexecutado e gerar um
   `.pkl` com formato diferente, esses testes acusam.
 
@@ -646,6 +674,7 @@ DiagnosisXAI/
 ├── app/
 │   ├── core/                        # Lógica de domínio (sem dependência de UI)
 │   │   ├── batch_processor.py       # Limpeza e padronização Z-score do lote
+│   │   ├── validacao.py             # Recusa de planilhas malformadas (Passo 2)
 │   │   ├── biomarkers.py            # Glossário dos 30 atributos (descrições + tooltips)
 │   │   ├── calculos.py              # Memorial de cálculo — fonte única dos números do app
 │   │   ├── committee.py             # Comitê de voto suave e sua explicação
@@ -684,7 +713,8 @@ DiagnosisXAI/
 │   ├── wisconsin.pkl                # Modelos, calibradores, scaler, explicadores SHAP
 │   ├── limiares.json                # Limiares e faixas de recusa calibrados
 │   ├── umap_train_2d.npy            # Embedding UMAP do treino (mapa populacional)
-│   ├── history.json                 # Sessões salvas (gerado em tempo de execução)
+│   ├── history.json                 # Sessões salvas (gerado em execução, não versionado)
+│   ├── history.example.json         # Formato de uma sessão do histórico
 │   ├── data.csv                     # Base WDBC completa
 │   ├── dataTreinamento_*.csv        # Partição de treino (com e sem diagnóstico)
 │   └── dataTeste_*.csv              # Partição de teste (com e sem diagnóstico)

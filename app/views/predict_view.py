@@ -195,7 +195,9 @@ class PredictView(ctk.CTkFrame):
         ctk.CTkLabel(padroniza_frame, text="Passo 2: Higienizar e Escalar (Z-Score)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=20, pady=(10, 5), sticky="w")
         self.btn_standardize = ctk.CTkButton(padroniza_frame, text="Aplicar Padronização", state="disabled", command=self.standardize_data, fg_color="#d35400", hover_color="#e67e22")
         self.btn_standardize.grid(row=1, column=0, padx=20, pady=10, sticky="w")
-        self.lbl_standardize_error = ctk.CTkLabel(padroniza_frame, text="", font=ctk.CTkFont(size=12), text_color="#e74c3c", justify="left")
+        # wraplength: as mensagens de validação da planilha (core/validacao.py)
+        # têm duas ou três frases — sem quebra de linha elas sairiam da janela.
+        self.lbl_standardize_error = ctk.CTkLabel(padroniza_frame, text="", font=ctk.CTkFont(size=12), text_color="#e74c3c", justify="left", wraplength=760)
         self.lbl_standardize_error.grid(row=2, column=0, padx=20, pady=(0, 10), sticky="w")
 
         # --- Passo 3: Inferência de IA ---
@@ -412,18 +414,30 @@ class PredictView(ctk.CTkFrame):
         """
         Instancia o BatchProcessor para higienizar e padronizar os dados brutos,
         atualiza a visualização e habilita a etapa de inferência.
+
+        Ao falhar — planilha recusada pela validação de ``core.validacao``, por
+        exemplo —, descarta o lote padronizado e volta a travar o Passo 3. Sem
+        isso, uma segunda planilha malformada deixava o botão de inferência
+        habilitado com os dados da planilha anterior, e o usuário diagnosticaria
+        o lote errado sem perceber.
         """
-        if self.df_bruto is not None:
-            try:
-                processor = BatchProcessor()
-                self.df_padronizado, self.df_limpo = processor.process(self.df_bruto)
-                self._update_treeview_with_data(self.df_padronizado)
-                
-                self.model_selector.configure(state="normal")
-                self.btn_run.configure(state="normal")
-                self.lbl_standardize_error.configure(text="")
-            except Exception as e:
-                self.lbl_standardize_error.configure(text=f"Erro na padronização: {e}")
+        if self.df_bruto is None:
+            return
+        try:
+            processor = BatchProcessor()
+            self.df_padronizado, self.df_limpo = processor.process(self.df_bruto)
+            self._update_treeview_with_data(self.df_padronizado)
+
+            self.model_selector.configure(state="normal")
+            self.btn_run.configure(state="normal")
+            self.lbl_standardize_error.configure(text="")
+        except Exception as e:
+            self.df_padronizado = None
+            self.df_limpo = None
+            self.model_selector.configure(state="disabled")
+            self.btn_run.configure(state="disabled")
+            self._update_treeview_with_data(self.df_bruto)
+            self.lbl_standardize_error.configure(text=f"Erro na padronização: {e}")
 
     def process_batch(self):
         """

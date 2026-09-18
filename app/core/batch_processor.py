@@ -4,6 +4,7 @@ Módulo para processamento e padronização de lotes de dados clínicos.
 
 import pandas as pd
 from core.inference import ModelLoader
+from core.validacao import validar_colunas, validar_nao_negativos, validar_valores
 
 class BatchProcessor:
     """
@@ -40,11 +41,20 @@ class BatchProcessor:
         df_clean = df.drop(columns=[col for col in colunas_remover if col in df.columns], errors='ignore')
 
         if self.loader.feature_names:
-            df_clean = df_clean[[col for col in self.loader.feature_names if col in df_clean.columns]]
+            validar_colunas(df_clean, self.loader.feature_names)
+            df_clean = df_clean[list(self.loader.feature_names)]
+
+        # Vem antes da heurística de escala: uma coluna com texto no meio nem
+        # tem média para comparar com o limiar de area_mean.
+        validar_valores(df_clean)
 
         is_raw = False
         if 'area_mean' in df_clean.columns and df_clean['area_mean'].mean() > 10:
             is_raw = True
+
+        if is_raw:
+            # Só agora dá para recusar negativos: em Z-score eles são normais.
+            validar_nao_negativos(df_clean)
 
         if is_raw:
             if self.loader.scaler is None:

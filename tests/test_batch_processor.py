@@ -14,6 +14,7 @@ import pandas as pd
 import pytest
 
 from core.batch_processor import BatchProcessor
+from core.validacao import LoteInvalido
 
 
 @pytest.fixture(scope="module")
@@ -52,6 +53,44 @@ def test_process_remove_colunas_nao_preditivas(csv_bruto):
 
     assert 'id' not in df_scaled.columns
     assert 'diagnosis' not in df_scaled.columns
+
+
+def test_process_recusa_planilha_com_coluna_faltando(csv_bruto):
+    processor = BatchProcessor()
+    with pytest.raises(LoteInvalido, match="radius_mean"):
+        processor.process(csv_bruto.drop(columns=['radius_mean']))
+
+
+def test_process_recusa_planilha_com_celula_vazia(csv_bruto):
+    df = csv_bruto.copy()
+    df['texture_mean'] = df['texture_mean'].astype(object)
+    df.loc[0, 'texture_mean'] = None
+
+    processor = BatchProcessor()
+    with pytest.raises(LoteInvalido, match="vazia"):
+        processor.process(df)
+
+
+def test_process_recusa_negativo_em_escala_bruta(csv_bruto):
+    df = csv_bruto.copy()
+    df.loc[0, 'area_mean'] = -1.0
+
+    processor = BatchProcessor()
+    with pytest.raises(LoteInvalido, match="negativo"):
+        processor.process(df)
+
+
+def test_process_aceita_negativo_em_lote_ja_padronizado(csv_bruto):
+    """
+    Em Z-score metade dos valores é negativa: a checagem de não negatividade
+    vale só para a escala bruta, e é o próprio process() que decide quando
+    aplicá-la.
+    """
+    processor = BatchProcessor()
+    df_scaled, _ = processor.process(csv_bruto)
+    assert (df_scaled.to_numpy() < 0).any()   # a premissa do teste
+
+    processor.process(df_scaled)   # não levanta
 
 
 def test_process_e_idempotente_em_dados_ja_padronizados(csv_bruto):

@@ -1,0 +1,14 @@
+[
+  {
+    "timestamp": "17/09/2026 14:37",
+    "arquivo": "dataTeste_sem_diagnostico.csv",
+    "modelo": "SVM",
+    "total": 143,
+    "malignos": 49,
+    "benignos": 57,
+    "adiados": 37,
+    "acuracia": {
+      "SVM": 100.0
+    }
+  }
+]

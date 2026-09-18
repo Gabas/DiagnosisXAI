@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(timeout 240 .venv/bin/python /tmp/claude-1000/-home-gabast-vscode-DiagnosisXAI/4030efc1-b792-41c7-9143-93a0a24f9797/scratchpad/diag.py)",
+      "Bash(.venv/bin/python -m pytest -q)",
+      "Bash(timeout 240 .venv/bin/python /tmp/claude-1000/-home-gabast-vscode-DiagnosisXAI/4030efc1-b792-41c7-9143-93a0a24f9797/scratchpad/fallback.py)",
+      "Bash(timeout 240 .venv/bin/python /tmp/claude-1000/-home-gabast-vscode-DiagnosisXAI/4030efc1-b792-41c7-9143-93a0a24f9797/scratchpad/smoke.py)",
+      "Bash(awk '{print $2}')",
+      "Bash(grep -vE \"^\\(core|views|utils|os|sys|json|re|io|math|time|datetime|tkinter|typing|webbrowser|threading|collections|itertools|functools|warnings|pathlib|copy|traceback|abc|dataclasses|textwrap|csv|random|shutil|tempfile|subprocess|platform|unicodedata|string|hashlib\\)$\")",
+      "Bash(.venv/bin/python -c ' *)",
+      "Bash(.venv/bin/python -m pytest --collect-only -q)"
+    ]
+  }
+}

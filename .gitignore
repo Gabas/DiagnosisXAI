@@ -21,6 +21,12 @@ __pycache__/
 # Documento do TCC (não versionado — use o link de entrega oficial)
 trabalho.pdf
 
+# Histórico de sessões: gerado em tempo de execução e específico de cada
+# máquina. Cada sessão guarda os relatórios completos do lote (~370 KB), então
+# o arquivo passava de 18 MB e produzia um diff gigante a cada execução do app.
+# O formato está documentado em data/history.example.json, esse sim versionado.
+data/history.json
+
 # Sistema operacional
 .DS_Store
 Thumbs.db
