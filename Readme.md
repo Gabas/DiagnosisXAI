@@ -156,7 +156,7 @@ na primeira vez, `shap` e `umap-learn` podem compilar extensões nativas.
 ### Executável (sem instalar Python)
 
 Para Windows e Linux há uma versão pronta: baixe o `.zip` do seu sistema em
-[**Releases**](https://github.com/Gabas/WisconsinNotebook/releases), descompacte e abra
+[**Releases**](https://github.com/Gabas/DiagnosisXAI/releases), descompacte e abra
 o `DiagnosisXAI` (`DiagnosisXAI.exe` no Windows). A pasta traz os CSVs de teste em
 `exemplos/` e um `LEIA-ME.txt`.
 

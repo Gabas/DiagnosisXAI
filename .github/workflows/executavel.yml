@@ -31,6 +31,10 @@ jobs:
           - os: ubuntu-22.04
             rotulo: Linux
     runs-on: ${{ matrix.os }}
+    env:
+      # O console do Windows no Actions não é UTF-8: sem isto, os acentos do
+      # relatório do autoteste saem como "�" no log (o programa em si não muda).
+      PYTHONUTF8: '1'
 
     steps:
       - uses: actions/checkout@v4

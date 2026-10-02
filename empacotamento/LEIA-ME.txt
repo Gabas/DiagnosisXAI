@@ -34,4 +34,4 @@ AVISO
   Software acadêmico, para pesquisa e ensino. Não é um dispositivo médico e
   não substitui o diagnóstico de um profissional de saúde.
 
-Código-fonte e documentação: https://github.com/Gabas/WisconsinNotebook
+Código-fonte e documentação: https://github.com/Gabas/DiagnosisXAI
