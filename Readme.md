@@ -153,7 +153,49 @@ na primeira vez, `shap` e `umap-learn` podem compilar extensões nativas.
 
 ## 3. Como rodar
 
-### O aplicativo
+### Executável (sem instalar Python)
+
+Para Windows e Linux há uma versão pronta: baixe o `.zip` do seu sistema em
+[**Releases**](https://github.com/Gabas/WisconsinNotebook/releases), descompacte e abra
+o `DiagnosisXAI` (`DiagnosisXAI.exe` no Windows). A pasta traz os CSVs de teste em
+`exemplos/` e um `LEIA-ME.txt`.
+
+- **Seus dados ficam fora da pasta do programa.** O histórico e os PDFs vão para
+  `DiagnosisXAI/` na sua pasta pessoal (`C:\Users\<você>\DiagnosisXAI` no Windows).
+- **No Windows, o SmartScreen pode bloquear a primeira abertura**, porque o programa
+  não tem assinatura digital paga: *Mais informações* → *Executar assim mesmo*.
+- **`DiagnosisXAI --autoteste`** roda o fluxo inteiro sem abrir janela (carrega os
+  modelos, diagnostica o lote de exemplo com todos eles, gera explicações, PDFs e
+  histórico) e diz se o programa está íntegro.
+
+<details>
+<summary><strong>Como os executáveis são gerados</strong></summary>
+
+<br>
+
+O PyInstaller só gera executável para o sistema em que roda. Por isso o workflow
+[`.github/workflows/executavel.yml`](.github/workflows/executavel.yml) usa uma máquina
+Windows e uma Linux do GitHub Actions. Ele roda ao criar uma tag `v*`
+(ex.: `git tag v1.0 && git push origin v1.0`) e publica o Release com os dois `.zip`.
+Também pode ser disparado à mão, na aba *Actions*. Para gerar localmente, para o próprio
+sistema:
+
+```bash
+python -m venv .venv-build && source .venv-build/bin/activate
+pip install -r requirements-executavel.txt
+python empacotamento/gerar.py          # -> dist/DiagnosisXAI-<sistema>.zip
+```
+
+O [`gerar.py`](empacotamento/gerar.py) empacota, junta os exemplos, **roda o
+`--autoteste` no programa pronto** e só então compacta. O PyInstaller só inclui o que
+enxerga nos imports, e o que fica de fora só aparece quando o programa roda. Exemplos: as
+classes que o `.pkl` referencia por nome, os temas do customtkinter, o BokehJS. O
+[`requirements-executavel.txt`](requirements-executavel.txt) fixa as versões exatas que
+geraram o `wisconsin.pkl`: com outra versão do scikit-learn, o `.pkl` pode não abrir.
+
+</details>
+
+### O aplicativo pelo código-fonte
 
 O `data/wisconsin.pkl` já vem versionado no repositório, só precisa ser regerado se
 você retreinar os modelos pelo notebook.
@@ -685,20 +727,20 @@ decididos no conjunto de teste.
 pytest
 ```
 
-**224 testes** cobrindo `app/core/` e os utilitários. A interface gráfica não é testada.
+**231 testes** cobrindo `app/core/` e os utilitários. A interface gráfica não é testada.
 Dois grupos:
 
 - **Isolados** (`test_explainers.py`, `test_history_manager.py`, `test_pdf_report.py`,
   `test_calculos.py`, `test_decision.py`, `test_metrics.py`, `test_committee.py`,
   `test_ood_detector.py`, `test_biomarkers.py`, `test_ui.py`, `test_bokeh_map.py`,
-  `test_validacao.py`, `test_fatores.py`), não
+  `test_validacao.py`, `test_fatores.py`, `test_caminhos.py`), não
   dependem do `wisconsin.pkl` nem do `history.json` reais. Os explicadores são testados
   sobre modelos treinados na hora com a base pública do scikit-learn
   (`load_breast_cancer`); o foco é validar que **a decisão exibida sempre bate com a
   decisão real do modelo** (`predict` / `predict_proba` / `decision_function`), o tipo de
   inconsistência já encontrado e corrigido no SVM e no KNN durante o desenvolvimento.
 
-- **De integração**, **49 dos 224 testes** exercitam o `data/wisconsin.pkl` versionado
+- **De integração**, **49 dos 231 testes** exercitam o `data/wisconsin.pkl` versionado
   (36 em `test_predictor.py`, 8 em `test_batch_processor.py`, 4 em `test_calculos.py` e
   1 em `test_fatores.py`, que confere que o bloco de fatores fecha na certeza da tabela).
   Servem também como *smoke test* do artefato: se o notebook for reexecutado e gerar um
@@ -713,6 +755,7 @@ DiagnosisXAI/
 ├── app/
 │   ├── core/                        # Lógica de domínio (sem dependência de UI)
 │   │   ├── batch_processor.py       # Limpeza e padronização Z-score do lote
+│   │   ├── caminhos.py              # Onde ler e gravar (código-fonte × executável)
 │   │   ├── validacao.py             # Recusa de planilhas malformadas (Passo 2)
 │   │   ├── biomarkers.py            # Glossário dos 30 atributos (descrições + tooltips)
 │   │   ├── calculos.py              # Memorial de cálculo — fonte única dos números do app
@@ -747,6 +790,7 @@ DiagnosisXAI/
 │   │   ├── report_window_shap.py    # SHAP
 │   │   ├── report_window_svm.py     # SVM
 │   │   └── report_window_umap.py    # Mapa populacional
+│   ├── autoteste.py                 # --autoteste: o fluxo inteiro, sem janela
 │   └── main.py                      # Ponto de entrada
 │
 ├── data/
@@ -765,10 +809,17 @@ DiagnosisXAI/
 ├── scripts/
 │   └── calibrar_limiares.py         # Gera data/limiares.json (out-of-fold, piso de especificidade)
 │
-├── tests/                           # 183 testes (pytest) sobre app/core e utils
+├── empacotamento/
+│   ├── DiagnosisXAI.spec            # Receita do PyInstaller
+│   ├── gerar.py                     # Empacota, autotesta e gera o .zip
+│   └── LEIA-ME.txt                  # Vai junto do executável
+├── .github/workflows/executavel.yml # Executáveis Windows e Linux no GitHub Actions
+│
+├── tests/                           # 231 testes (pytest) sobre app/core e utils
 ├── reports/                         # Saída dos PDFs/CSVs exportados pelo app
 ├── docs/img/                        # Capturas de tela usadas neste README
 ├── requirements.txt
+├── requirements-executavel.txt     # Versões exatas para o executável (as do .pkl)
 └── pytest.ini
 ```
 

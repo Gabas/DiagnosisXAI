@@ -1,0 +1,79 @@
+# Gera os executáveis do DiagnosisXAI para Windows e Linux.
+#
+# O PyInstaller só gera executável para o sistema em que roda, então cada
+# sistema tem a sua máquina. As duas rodam o mesmo empacotamento/gerar.py, que
+# empacota, testa o programa pronto com --autoteste e gera o .zip.
+#
+# Como disparar:
+#   - na aba "Actions" do GitHub: "Executável" -> "Run workflow". Os .zip
+#     ficam em "Artifacts", no fim da página da execução;
+#   - criando uma tag "v*" (ex.: git tag v1.0 && git push origin v1.0): além
+#     disso, publica um Release com os dois .zip anexados.
+
+name: Executável
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  executavel:
+    name: ${{ matrix.rotulo }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rotulo: Windows
+          # 22.04, e não a mais recente: um binário Linux roda em sistemas com
+          # glibc igual ou MAIS NOVA que a da máquina do build, nunca mais velha.
+          - os: ubuntu-22.04
+            rotulo: Linux
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-executavel.txt
+
+      - name: Tcl/Tk (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y tk-dev
+
+      - name: Dependências (versões exatas do .pkl)
+        run: python -m pip install -r requirements-executavel.txt
+
+      - name: Empacotar, autotestar e compactar
+        run: python empacotamento/gerar.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DiagnosisXAI-${{ matrix.rotulo }}
+          path: dist/DiagnosisXAI-*.zip
+          if-no-files-found: error
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: executavel
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: zips
+          merge-multiple: true
+      - name: Publicar o Release com os dois .zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "${{ github.ref_name }}" zips/*.zip
+          --repo "${{ github.repository }}"
+          --title "DiagnosisXAI ${{ github.ref_name }}"
+          --notes "Executáveis para Windows e Linux. Baixe o .zip do seu sistema, descompacte e abra o DiagnosisXAI (veja o LEIA-ME.txt dentro da pasta)."

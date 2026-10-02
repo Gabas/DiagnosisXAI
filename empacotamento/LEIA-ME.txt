@@ -1,0 +1,37 @@
+DiagnosisXAI
+Diagnóstico assistido de câncer de mama (base Wisconsin) com IA explicável.
+Trabalho de Conclusão de Curso — Ciência da Computação, Universidade Tuiuti do Paraná.
+
+COMO ABRIR
+  Windows: dê dois cliques em DiagnosisXAI.exe.
+  Linux:   ./DiagnosisXAI   (se preciso: chmod +x DiagnosisXAI)
+
+  Não precisa instalar Python nem nenhuma biblioteca. A primeira abertura
+  leva alguns segundos.
+
+  No Windows, pode aparecer "O Windows protegeu o computador" (SmartScreen),
+  porque o programa não tem assinatura digital paga. Clique em
+  "Mais informações" e depois em "Executar assim mesmo".
+
+PARA EXPERIMENTAR
+  A pasta "exemplos" traz o conjunto de teste da base Wisconsin:
+    - dataTeste_sem_diagnostico.csv   -> entrada do Passo 1
+    - dataTeste_com_diagnostico.csv   -> gabarito do Passo 4 (auditoria)
+
+ONDE FICAM OS SEUS DADOS
+  O histórico de sessões e os PDFs exportados vão para a pasta
+  "DiagnosisXAI" dentro da sua pasta pessoal:
+    Windows: C:\Users\<seu usuário>\DiagnosisXAI
+    Linux:   ~/DiagnosisXAI
+  Apagar a pasta do programa não apaga esses dados.
+
+VERIFICAR SE O PROGRAMA ESTÁ ÍNTEGRO
+  DiagnosisXAI --autoteste
+  Roda o fluxo completo sem abrir janela e grava um relatório em
+  autoteste.txt (numa pasta temporária, sem tocar nos seus dados).
+
+AVISO
+  Software acadêmico, para pesquisa e ensino. Não é um dispositivo médico e
+  não substitui o diagnóstico de um profissional de saúde.
+
+Código-fonte e documentação: https://github.com/Gabas/WisconsinNotebook

@@ -52,7 +52,8 @@ exibidas sem invalidar o raciocínio que as acompanha.
 """
 
 import json
-import os
+
+from core.caminhos import recurso
 
 ROTULO_MALIGNO = 'Maligno'
 ROTULO_BENIGNO = 'Benigno'
@@ -180,8 +181,7 @@ class PoliticaDecisao:
             funcionando exatamente como antes de haver limiares calibrados.
         """
         if caminho is None:
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            caminho = os.path.join(base_dir, 'data', _ARQUIVO_PADRAO)
+            caminho = recurso(_ARQUIVO_PADRAO)
 
         try:
             with open(caminho, 'r', encoding='utf-8') as f:

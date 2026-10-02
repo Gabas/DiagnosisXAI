@@ -6,6 +6,8 @@ import cloudpickle
 import os
 import numpy as np
 
+from core.caminhos import recurso
+
 class ModelLoader:
     """
     Classe utilitária para carregar os artefactos e modelos treinados.
@@ -57,8 +59,7 @@ class ModelLoader:
 
     def _load_artifacts(self):
         """Abre o arquivo .pkl e carrega o scaler, features e modelos na memória."""
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        filepath = os.path.join(base_dir, 'data', 'wisconsin.pkl')
+        filepath = recurso('wisconsin.pkl')
 
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"Arquivo não encontrado: {filepath}")
@@ -112,7 +113,7 @@ class ModelLoader:
                 # Fallback: embedding UMAP em arquivo próprio (robusto quando o
                 # .pkl é regenerado sem ele). Alinhado com X_train_scaled.
                 if self.umap_train_2d is None:
-                    umap_path = os.path.join(base_dir, 'data', 'umap_train_2d.npy')
+                    umap_path = recurso('umap_train_2d.npy')
                     if os.path.exists(umap_path):
                         self.umap_train_2d = np.load(umap_path)
 

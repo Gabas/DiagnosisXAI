@@ -16,6 +16,10 @@ __pycache__/
 # Testes
 .pytest_cache/
 
+# Executável (gerado por empacotamento/gerar.py)
+build/
+dist/
+
 # Jupyter
 .ipynb_checkpoints/
 

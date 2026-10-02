@@ -11,6 +11,7 @@ import pandas as pd
 
 from core.batch_processor import BatchProcessor
 from core.biomarkers import descricao_coluna
+from core.caminhos import pasta_exemplos
 from core.committee import explicar as explicar_comite
 from core.decision import (
     COLUNA_ZONA,
@@ -362,12 +363,10 @@ class PredictView(ctk.CTkFrame):
         Returns
         -------
         str
-            Caminho da pasta ``data/`` do repositório (onde ficam os CSVs).
-            Caso ela não exista, retorna a raiz do repositório como reserva.
+            Pasta dos CSVs de exemplo: ``data/`` pelo código-fonte, ``exemplos/``
+            ao lado do programa no executável (ver ``core.caminhos``).
         """
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        data_dir = os.path.join(base_dir, 'data')
-        return data_dir if os.path.isdir(data_dir) else base_dir
+        return pasta_exemplos()
 
     def select_file(self):
         """

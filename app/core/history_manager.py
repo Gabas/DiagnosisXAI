@@ -6,6 +6,8 @@ import json
 import os
 from datetime import datetime
 
+from core.caminhos import arquivo_historico
+
 
 class HistoryManager:
     """
@@ -14,13 +16,13 @@ class HistoryManager:
     Attributes
     ----------
     _path : str
-        Caminho absoluto para o arquivo history.json em data/.
+        Caminho absoluto do history.json (ver ``core.caminhos``: ``data/`` do
+        repositório pelo código-fonte, ``~/DiagnosisXAI`` no executável).
     """
 
     def __init__(self):
         """Inicializa o gerenciador resolvendo o caminho do arquivo de histórico."""
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        self._path = os.path.join(base_dir, 'data', 'history.json')
+        self._path = arquivo_historico()
 
     def load(self) -> list[dict]:
         """

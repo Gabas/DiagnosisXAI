@@ -1,0 +1,44 @@
+# ============================================================
+# DiagnosisXAI — dependências do EXECUTÁVEL (versões exatas)
+# Python 3.12
+# ============================================================
+#
+# Por que um arquivo separado do requirements.txt: o executável carrega o
+# data/wisconsin.pkl, que guarda objetos do scikit-learn, do numpy e do pandas
+# na versão em que o notebook os salvou. O requirements.txt usa ">=" (bom para
+# desenvolver); um build com versões mais novas pode não conseguir abrir o
+# .pkl. Aqui estão as versões exatas do ambiente que gerou o .pkl atual.
+#
+# Só o que o APP usa — nada do notebook (umap-learn, seaborn, mlxtend,
+# jupyterlab...), que só engordaria o pacote.
+#
+# Ao regenerar o .pkl com outras versões, atualize este arquivo junto.
+
+# --- Núcleo: tudo que o .pkl referencia -------------------------------------
+numpy==2.4.6
+pandas==3.0.3
+scikit-learn==1.9.0
+scipy==1.18.0
+joblib==1.5.3
+threadpoolctl==3.6.0
+cloudpickle==3.1.2
+
+# --- Interface, gráficos e relatórios ----------------------------------------
+matplotlib==3.11.0
+pillow==12.2.0
+customtkinter==6.0.0
+darkdetect==0.8.0
+reportlab==5.0.0
+bokeh==3.9.2
+
+# --- SHAP (janela coluna a coluna) e o que ele exige -------------------------
+shap==0.52.0
+numba==0.65.1
+llvmlite==0.47.0
+slicer==0.0.8
+tqdm==4.68.3
+packaging==26.2
+
+# --- Empacotamento -------------------------------------------------------------
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.8

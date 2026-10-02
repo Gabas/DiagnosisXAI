@@ -5,6 +5,7 @@ Este módulo inicializa as configurações globais de interface do
 CustomTkinter e executa o loop principal da janela da aplicação.
 """
 
+import sys
 import tkinter as tk
 import customtkinter as ctk
 from views.main_window import MainWindow
@@ -16,7 +17,15 @@ def main():
     Configura o CustomTkinter para usar o modo escuro ("Dark") e
     o tema de cores verde ("green"), instancia a janela principal
     e inicia o loop de eventos principal do Tkinter.
+
+    Com ``--autoteste``, não abre janela nenhuma: roda o pipeline completo e
+    sai com código 0 ou 1 (ver ``autoteste.py``) — é como o build verifica o
+    executável pronto.
     """
+    if '--autoteste' in sys.argv[1:]:
+        from autoteste import executar
+        sys.exit(executar())
+
     ctk.set_appearance_mode("Dark")
     ctk.set_default_color_theme("green")
     _ajustar_escala_para_tela()

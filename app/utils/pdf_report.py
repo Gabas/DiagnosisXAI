@@ -16,9 +16,10 @@ antes de qualquer texto ser desenhado.
 """
 
 import io
-import os
 import re
 from datetime import datetime
+
+from core.caminhos import pasta_relatorios
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -49,11 +50,8 @@ _SUBSTITUICOES = {
 
 
 def resolve_reports_dir() -> str:
-    """Resolve (e cria, se preciso) a pasta ``reports/`` do repositório."""
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    reports_dir = os.path.join(base_dir, 'reports')
-    os.makedirs(reports_dir, exist_ok=True)
-    return reports_dir
+    """Pasta padrão dos PDFs: ``reports/`` pelo código-fonte, ``~/DiagnosisXAI/relatorios`` no executável."""
+    return pasta_relatorios()
 
 
 def _sanitizar(texto: str) -> str:
