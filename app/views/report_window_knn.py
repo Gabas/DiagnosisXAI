@@ -18,10 +18,10 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from utils.ui import (ScrollableFrame, adicionar_barra_zoom, ajustar_ao_conteudo,
                       bind_treeview_mousewheel, figura_responsiva, itens_visiveis,
                       responsive_geometry)
-from views.report_common import PatientPDFExportMixin
+from views.report_common import FatoresPacienteMixin, PatientPDFExportMixin
 
 
-class KNNReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
+class KNNReportWindow(ctk.CTkToplevel, PatientPDFExportMixin, FatoresPacienteMixin):
     """
     Janela secundária com o relatório de explicabilidade do KNN.
 
@@ -37,13 +37,16 @@ class KNNReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         Projeção 2D dos pacientes de treino (fundo do mapa).
     """
 
+    # Modelo cujos fatores (SHAP por fator) entram no detalhe de cada paciente.
+    MODELO_FATORES = "KNN"
+
     COR_MALIGNO = "#e74c3c"
     COR_BENIGNO = "#2ecc71"
     COR_REVISAR = "#e67e22"   # laranja: caso devolvido para revisão humana
     COR_FUNDO = "#2b2b2b"
 
     def __init__(self, master, importancias: list, explicacoes: list,
-                 contexto: dict, **kwargs):
+                 contexto: dict, fatores=None, **kwargs):
         """
         Inicializa a janela de relatório do KNN.
 
@@ -58,10 +61,14 @@ class KNNReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         contexto : dict
             {'k', 'train_2d', 'train_y'} — parâmetros do modelo e o mapa 2D
             dos pacientes de treino.
+        fatores : core.fatores.FatoresDoLote ou None
+            Provedor do bloco "Fatores que mais pesaram" de cada paciente.
+            None desliga o bloco (ex.: sessão do histórico sem o lote salvo).
         **kwargs
             Argumentos adicionais para o construtor do CTkToplevel.
         """
         super().__init__(master, **kwargs)
+        self._configurar_fatores(fatores)
         self.title("Relatório de Explicabilidade: KNN")
         responsive_geometry(self, 1060, 840)
         self.grid_columnconfigure(0, weight=1)
@@ -314,10 +321,7 @@ class KNNReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         if not explicacao:
             return
 
-        self._detalhe.configure(state="normal")
-        self._detalhe.delete("1.0", "end")
-        self._detalhe.insert("1.0", self._formatar_detalhe(explicacao))
-        self._detalhe.configure(state="disabled")
+        self._escrever_detalhe(explicacao)
 
         self._destacar(explicacao)
 

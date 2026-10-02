@@ -17,6 +17,7 @@ antes de qualquer texto ser desenhado.
 
 import io
 import os
+import re
 from datetime import datetime
 
 from reportlab.lib import colors
@@ -41,6 +42,9 @@ _MARGENS = dict(leftMargin=2 * cm, rightMargin=2 * cm, topMargin=2 * cm, bottomM
 # Glifos usados nas janelas de relatório que os fontes base do PDF não têm.
 _SUBSTITUICOES = {
     '⚠': '[!]', '←': '<-', '→': '->', '↑': '^', '↓': 'v',
+    # A régua de decisão (PoliticaDecisao.regra) usa os dois — e aparece tanto
+    # no PDF do lote quanto no bloco de fatores do PDF do paciente.
+    '≥': '>=', '≤': '<=',
 }
 
 
@@ -62,6 +66,21 @@ def _sanitizar(texto: str) -> str:
 def _escapar_html(texto: str) -> str:
     """Escapa marcação especial do ReportLab (subconjunto de HTML) em texto livre."""
     return (texto.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'))
+
+
+def _preservar_colunas(texto: str) -> str:
+    """
+    Mantém o recuo e os espaços repetidos de uma linha em fonte monoespaçada.
+
+    O ``Paragraph`` do ReportLab colapsa espaços como o HTML, o que desfazia
+    as colunas alinhadas do texto de detalhe (a cascata de fatores, o balanço
+    de forças do SVM, a lista de membros do comitê). Recuo e sequências de dois
+    ou mais espaços viram espaços não separáveis; o espaço simples entre
+    palavras continua normal, para a linha longa ainda poder quebrar.
+    """
+    recuo = len(texto) - len(texto.lstrip(' '))
+    corpo = re.sub(r' {2,}', lambda m: '&nbsp;' * len(m.group()), texto[recuo:])
+    return '&nbsp;' * recuo + corpo
 
 
 def _estilo_tabela(zebra: bool = False) -> TableStyle:
@@ -226,6 +245,6 @@ def export_patient_report(path: str, titulo_janela: str, paciente_id, texto_deta
         story.append(Spacer(1, 0.4 * cm))
 
     for linha in _sanitizar(texto_detalhe).strip('\n').split('\n'):
-        story.append(Paragraph(_escapar_html(linha) or '&nbsp;', _MONO))
+        story.append(Paragraph(_preservar_colunas(_escapar_html(linha)) or '&nbsp;', _MONO))
 
     doc.build(story)

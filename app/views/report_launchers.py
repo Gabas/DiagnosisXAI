@@ -199,15 +199,20 @@ def abrir_shap(master, loader, key, X_scaled, X_raw, indices, cache=None):
     # relatório SHAP discordar do diagnóstico que o usuário está lendo.
     politica = getattr(loader, 'politica', None)
     calibrado = loader.calibrated_models.get(nome_modelo)
+    certezas = None
     if politica is not None and calibrado is not None:
-        prob = calibrado.predict_proba(X_scaled)[:, 1]
-        classes = [politica.rotular(p, nome_modelo) for p in prob]
+        certezas = calibrado.predict_proba(X_scaled)[:, 1]
+        classes = [politica.rotular(p, nome_modelo) for p in certezas]
     else:
         preds = modelo.predict(entrada)
         classes = ['Maligno' if p == ShapExplainer.CLASSE_MALIGNO else 'Benigno' for p in preds]
 
+    # A certeza (calibrada) vai junto para a janela poder exibi-la ao lado da
+    # saída bruta que o SHAP decompõe — sem isso o médico via um único
+    # "P(Maligno)" que chegava a 20 pontos de diferença da tabela do Passo 3.
     pacientes = [
-        {'indice': int(indices[i]), 'classe': classes[i]}
+        {'indice': int(indices[i]), 'classe': classes[i],
+         'certeza': None if certezas is None else float(certezas[i])}
         for i in range(len(indices))
     ]
     importancias = loader.shap_importances.get(key, [])

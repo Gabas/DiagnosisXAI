@@ -4,8 +4,14 @@ Módulo contendo a janela de relatório de explicabilidade SHAP.
 É uma janela única, parametrizada pelo modelo: mostra a importância global
 (pré-calculada no notebook) e, ao selecionar um paciente, calcula sob demanda
 (lazy) as contribuições SHAP daquele paciente e as apresenta como um gráfico de
-cascata (waterfall). O cálculo por paciente leva frações de segundo, mesmo para
-os modelos que usam o KernelExplainer (SVM e KNN).
+cascata (waterfall). O cálculo por paciente é instantâneo na Árvore e no Random
+Forest (TreeExplainer) e leva de 0,25 s (Regressão Logística) a ~1,5 s (SVM)
+nos modelos que usam o KernelExplainer.
+
+É o detalhe coluna a coluna, sobre a saída do modelo ANTES da calibração. A
+explicação principal para o médico — por fator, sobre a certeza calibrada e
+incluindo o comitê — é o bloco "Fatores que mais pesaram" de cada relatório por
+modelo (``core.fatores``).
 """
 
 import customtkinter as ctk
@@ -119,7 +125,7 @@ class ShapReportWindow(ctk.CTkToplevel):
         ctk.CTkLabel(
             header,
             text=(f"{n} paciente(s)   ·   Maligno: {malignos}    Benigno: {benignos}{revisar}"
-                  f"   ·   SHAP {modo}   ·   base + Σ(shap) = P(Maligno)"),
+                  f"   ·   SHAP {modo}   ·   base + Σ(shap) = P(Maligno) antes da calibração"),
             font=ctk.CTkFont(size=13), text_color="gray",
         ).pack(anchor="w")
 
@@ -215,7 +221,7 @@ class ShapReportWindow(ctk.CTkToplevel):
 
         self._lbl_detalhe = ctk.CTkLabel(
             frame, text="Selecione um paciente para calcular as contribuições SHAP.",
-            font=ctk.CTkFont(size=14, weight="bold"), anchor="w",
+            font=ctk.CTkFont(size=14, weight="bold"), anchor="w", wraplength=940,
         )
         self._lbl_detalhe.grid(row=0, column=0, sticky="w", padx=16, pady=(12, 4))
 
@@ -257,9 +263,19 @@ class ShapReportWindow(ctk.CTkToplevel):
             spine.set_color("gray")
         self._canvas.draw_idle()
 
+        # Dois números diferentes, cada um com o seu nome: a certeza é a da
+        # tabela do Passo 3 (calibrada); o SHAP desta janela decompõe a saída do
+        # modelo ANTES da calibração. Rotulá-los iguais fazia parecerem
+        # contraditórios — chegavam a cair em lados opostos do limiar.
+        certeza = p.get('certeza')
+        linha1 = f"Paciente {p['indice']}  ·  {p['classe']}"
+        if certeza is not None:
+            linha1 += f"  ·  certeza (a da tabela): {certeza * 100:.1f}%"
         self._lbl_detalhe.configure(
-            text=(f"Paciente {p['indice']}  ·  {p['classe']}  ·  "
-                  f"P(Maligno) = {r['prob'] * 100:.1f}%   (base {r['base'] * 100:.1f}%)"))
+            text=(f"{linha1}\nO gráfico decompõe a saída do modelo antes da calibração: "
+                  f"{r['prob'] * 100:.1f}% (referência {r['base'] * 100:.1f}%). Para a "
+                  f"certeza, veja \"Fatores que mais pesaram\" no relatório do modelo."),
+            justify="left")
 
     def _style_tree(self):
         """Aplica o tema escuro ao componente Treeview."""

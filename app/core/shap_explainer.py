@@ -9,11 +9,14 @@ do modelo e de um background resumido (calculado e salvo pelo notebook).
 Estratégia (validada por medição de tempo):
 - Árvore de Decisão e Random Forest usam TreeExplainer (exato e instantâneo).
 - Regressão Logística, SVM e KNN usam KernelExplainer sobre predict_proba
-  (aproximado); é rápido por paciente (~0,2–0,4 s), mas lento para o lote todo —
-  por isso a explicação individual é calculada sob demanda (lazy) no app.
+  (aproximado). Medido no lote de teste: ~0,25 s por paciente na Regressão
+  Logística, ~0,9 s no KNN e ~1,5 s no SVM — lento para o lote todo, por isso
+  a explicação individual é calculada sob demanda (lazy) no app.
 
 Em todos os casos os valores estão em espaço de probabilidade:
-``base + Σ(shap) = P(Maligno)``.
+``base + Σ(shap) = P(Maligno)`` — a do modelo ANTES da calibração, que não é a
+certeza exibida na tabela. A decomposição da certeza calibrada, por fator e
+exata, está em ``core.fatores``.
 """
 
 import numpy as np

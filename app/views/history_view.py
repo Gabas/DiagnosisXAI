@@ -2,8 +2,11 @@
 Módulo contendo a aba de histórico de sessões de diagnóstico.
 """
 
+import copy
+
 import customtkinter as ctk
 from tkinter import messagebox
+from core.fatores import FatoresDoLote
 from core.history_manager import HistoryManager
 from utils.ui import ScrollableFrame, responsive_geometry
 from views import report_launchers
@@ -317,6 +320,7 @@ class SessionDetailWindow(ctk.CTkToplevel):
         self._report_windows = {}
         self._loader = None
         self._shap_cache = {}
+        self._fatores = None      # provedor dos fatores da sessão (lazy)
         self._build(entry)
         self.after(150, self.lift)
         self.after(200, self.focus)
@@ -493,7 +497,44 @@ class SessionDetailWindow(ctk.CTkToplevel):
             return
         self._fechar_janela(tipo)
         _, Classe = self._TIPOS[tipo]
-        self._report_windows[tipo] = Classe(self, **dados)
+        self._report_windows[tipo] = Classe(self, **dados, fatores=self._fatores_da_sessao())
+
+    def _fatores_da_sessao(self):
+        """
+        Provedor do bloco "Fatores que mais pesaram" para a sessão salva, ou None.
+
+        Reaproveita o lote que a sessão guardou para o SHAP (padronizado e bruto)
+        e os modelos do ``wisconsin.pkl`` atual. A régua só aparece se a sessão
+        registrou o estado da recusa; sessões antigas saem sem ela, em vez de
+        mostrar uma régua que talvez não tenha sido a que decidiu.
+
+        Returns
+        -------
+        core.fatores.FatoresDoLote ou None
+            None quando a sessão não guardou o lote — o detalhe então sai sem
+            o bloco, como antes.
+        """
+        if self._fatores is not None:
+            return self._fatores
+        relatorios = self._normalizar_relatorio(self._entry.get('relatorio'))
+        lote = relatorios.get('shap')
+        if not lote:
+            return None
+        try:
+            loader = self._obter_loader()
+            politica = None
+            estado = relatorios.get('politica')
+            if estado is not None and getattr(loader, 'politica', None) is not None:
+                politica = copy.copy(loader.politica)
+                politica.adiar_incertos = bool(estado.get('adiar_incertos', True))
+            self._fatores = FatoresDoLote(loader, lote['X_scaled'], lote['X_raw'],
+                                          lote['indices'], politica=politica)
+        except Exception as e:
+            # O bloco é um acréscimo: se não der para montá-lo, o relatório
+            # ainda abre, só que sem ele.
+            print(f"Fatores indisponíveis para esta sessão: {e}")
+            return None
+        return self._fatores
 
     def _abrir_shap(self, key: str):
         """

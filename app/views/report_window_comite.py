@@ -17,14 +17,15 @@ matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
+from core.decision import NOME_COMITE
 from core.committee import (MOTIVO_CAUTELA, MOTIVO_DISCORDANCIA, MOTIVO_FRONTEIRA,
                             MOTIVO_MAIORIA)
 from utils.ui import (ScrollableFrame, ajustar_ao_conteudo, bind_treeview_mousewheel,
                       figura_responsiva, itens_visiveis, responsive_geometry)
-from views.report_common import PatientPDFExportMixin
+from views.report_common import FatoresPacienteMixin, PatientPDFExportMixin
 
 
-class ComiteReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
+class ComiteReportWindow(ctk.CTkToplevel, PatientPDFExportMixin, FatoresPacienteMixin):
     """
     Janela de explicabilidade do comitê de voto suave.
 
@@ -39,6 +40,9 @@ class ComiteReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
     _membros : list[str]
         Nomes dos modelos que compõem o comitê.
     """
+
+    # Modelo cujos fatores (SHAP por fator) entram no detalhe de cada paciente.
+    MODELO_FATORES = NOME_COMITE
 
     COR_MALIGNO = "#e74c3c"
     COR_BENIGNO = "#2ecc71"
@@ -55,7 +59,7 @@ class ComiteReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
     }
 
     def __init__(self, master, membros: list, limiares: dict, limiar_comite: float,
-                 faixa, explicacoes: list, resumo: dict, **kwargs):
+                 faixa, explicacoes: list, resumo: dict, fatores=None, **kwargs):
         """
         Inicializa a janela de relatório do comitê.
 
@@ -75,10 +79,14 @@ class ComiteReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             Explicações por paciente (ver ``core.committee.explicar``).
         resumo : dict
             Estatísticas do lote: concordância por membro e contagem de motivos.
+        fatores : core.fatores.FatoresDoLote ou None
+            Provedor do bloco "Fatores que mais pesaram" de cada paciente.
+            None desliga o bloco (ex.: sessão do histórico sem o lote salvo).
         **kwargs
             Argumentos adicionais para o construtor do CTkToplevel.
         """
         super().__init__(master, **kwargs)
+        self._configurar_fatores(fatores)
         self.title("Relatório de Explicabilidade: Comitê (voto suave)")
         responsive_geometry(self, 1060, 840)
         self.grid_columnconfigure(0, weight=1)
@@ -358,10 +366,7 @@ class ComiteReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         if not explicacao:
             return
         self._desenhar_posicoes(explicacao)
-        self._detalhe.configure(state="normal")
-        self._detalhe.delete("1.0", "end")
-        self._detalhe.insert("1.0", self._formatar_detalhe(explicacao))
-        self._detalhe.configure(state="disabled")
+        self._escrever_detalhe(explicacao)
 
     def _formatar_detalhe(self, e: dict) -> str:
         """

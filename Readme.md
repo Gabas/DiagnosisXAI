@@ -390,6 +390,42 @@ gráfico e detalhamento por paciente. Cada tela é adaptada à natureza do algor
 de aplicar a mesma visualização genérica a todos. As **seis janelas por modelo** exportam
 o laudo do paciente selecionado em PDF; SHAP e UMAP são telas de leitura.
 
+### Fatores que mais pesaram — igual em todos os modelos
+
+Antes do raciocínio próprio de cada algoritmo, o detalhe de todo paciente abre pelo mesmo
+bloco, inclusive no comitê: os seis fatores que mais moveram a certeza, numa cascata que
+parte da certeza média do treino e fecha **exatamente** na certeza da tabela do Passo 3.
+
+```
+Fatores que mais pesaram na certeza (SHAP):
+ Média do treino    37.7%
+ Tamanho do núcleo +50.4 pp  → Maligno  +1.4 dp
+ Pontos côncavos    +7.3 pp  → Maligno  +1.6 dp
+ Dimensão fractal   -3.8 pp  → Benigno  +2.2 dp
+ Concavidade        +2.5 pp  → Maligno  +1.5 dp
+ Textura            +2.4 pp  → Maligno  +1.3 dp
+ Compacidade        -1.3 pp  → Benigno  +2.7 dp
+ Demais 2 fatores   -0.3 pp
+ --------------------------
+ Este paciente      94.8%
+```
+
+Cada escolha do método foi medida no lote de teste antes de virar código:
+
+| Escolha | Por quê |
+|---|---|
+| **8 fatores, não 30 colunas** | Raio, perímetro e área têm correlação de 0,98 a 0,998. Um "top 6" das 30 colunas gastava em média 3 posições repetindo "o núcleo é grande" e cobria só 62–69% da explicação; agrupados, 3 fatores cobrem ~90%. Cada fator leva junto média, erro padrão e pior. |
+| **Shapley exato** | Com 8 fatores há só 2⁸ = 256 coalizões: o valor de cada fator é calculado por enumeração, sem a amostragem do KernelExplainer, e as colunas de um fator nunca são separadas (não se combina o raio de um paciente com a área de outro). |
+| **Sobre a certeza calibrada** | A soma fecha com o número da tabela. O SHAP do modelo bruto chegava a 20 pontos de diferença dela. |
+| **Fundo = treino inteiro** | O ponto de partida é a certeza média real do treino (~37,5%, a prevalência). Os 25 centroides do SHAP clássico davam 52%; amostras de 60–150 pacientes erravam os fatores em até 6 pontos. |
+| **Comitê pela linearidade** | A certeza do comitê é a média dos membros, e o Shapley é linear: os fatores do comitê são, exatamente, a média dos fatores dos membros. |
+
+O bloco também avisa quando os fatores parecem contradizer o diagnóstico — um "Maligno"
+cuja certeza ficou *abaixo* da média do treino, mas acima de um corte que é baixo de
+propósito — e cita o corte que de fato decidiu. O cálculo leva de 0,1 s a ~5 s (comitê)
+e roda em segundo plano: a janela não trava, e o PDF do paciente só é gerado com o bloco
+completo. Como todo SHAP, descreve **o que o modelo usou**, não a causa biológica do tumor.
+
 <table>
 <tr>
 <td width="50%" valign="top">
@@ -473,10 +509,12 @@ percorrido da raiz até a folha.
 <tr>
 <td width="50%" valign="top">
 
-**SHAP — contribuição por biomarcador**
+**SHAP — contribuição coluna a coluna**
 
-Atribui a cada atributo sua contribuição para a decisão daquele paciente, com
-importância global e o desdobramento individual. Disponível para os cinco modelos.
+O detalhe dos 30 atributos, com importância global e o desdobramento individual, para os
+cinco modelos. Decompõe a saída do modelo *antes* da calibração; por isso a janela mostra
+esse número ao lado da certeza da tabela, cada um com o seu nome. A explicação principal
+para o médico é o bloco de fatores, acima.
 
 <img src="docs/img/14-xai-shap.png" alt="Relatório SHAP">
 
@@ -647,21 +685,22 @@ decididos no conjunto de teste.
 pytest
 ```
 
-**199 testes** cobrindo `app/core/` e os utilitários. A interface gráfica não é testada.
+**224 testes** cobrindo `app/core/` e os utilitários. A interface gráfica não é testada.
 Dois grupos:
 
 - **Isolados** (`test_explainers.py`, `test_history_manager.py`, `test_pdf_report.py`,
   `test_calculos.py`, `test_decision.py`, `test_metrics.py`, `test_committee.py`,
   `test_ood_detector.py`, `test_biomarkers.py`, `test_ui.py`, `test_bokeh_map.py`,
-  `test_validacao.py`), não
+  `test_validacao.py`, `test_fatores.py`), não
   dependem do `wisconsin.pkl` nem do `history.json` reais. Os explicadores são testados
   sobre modelos treinados na hora com a base pública do scikit-learn
   (`load_breast_cancer`); o foco é validar que **a decisão exibida sempre bate com a
   decisão real do modelo** (`predict` / `predict_proba` / `decision_function`), o tipo de
   inconsistência já encontrado e corrigido no SVM e no KNN durante o desenvolvimento.
 
-- **De integração**, **48 dos 199 testes** exercitam o `data/wisconsin.pkl` versionado
-  (36 em `test_predictor.py`, 8 em `test_batch_processor.py` e 4 em `test_calculos.py`).
+- **De integração**, **49 dos 224 testes** exercitam o `data/wisconsin.pkl` versionado
+  (36 em `test_predictor.py`, 8 em `test_batch_processor.py`, 4 em `test_calculos.py` e
+  1 em `test_fatores.py`, que confere que o bloco de fatores fecha na certeza da tabela).
   Servem também como *smoke test* do artefato: se o notebook for reexecutado e gerar um
   `.pkl` com formato diferente, esses testes acusam.
 
@@ -680,6 +719,7 @@ DiagnosisXAI/
 │   │   ├── committee.py             # Comitê de voto suave e sua explicação
 │   │   ├── decision.py              # Régua: limiar, faixa de recusa, banda e zonas
 │   │   ├── explainers.py            # Explicadores exatos, um por algoritmo
+│   │   ├── fatores.py               # Fatores que mais pesaram (SHAP exato por fator)
 │   │   ├── history_manager.py       # Persistência das sessões em data/history.json
 │   │   ├── inference.py             # Carregamento do wisconsin.pkl
 │   │   ├── metrics.py               # Auditoria: métricas, IC de Wilson, leitura crítica

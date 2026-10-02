@@ -436,12 +436,25 @@ SECOES = (
                 "plano, só interpolar, e a interpolação erra justamente nos casos limítrofes.",
             ),
             (
-                "SHAP",
-                "base + Σ φⱼ = P(Maligno)",
-                "Cada atributo recebe a parte da previsão que cabe a ele, calculada por valores "
-                "de Shapley. Árvore e Random Forest usam o TreeExplainer, que é exato e "
-                "instantâneo. Os outros três usam o KernelExplainer, que é aproximado e mais "
-                "lento, por isso só roda quando você abre o relatório.",
+                "Fatores que mais pesaram",
+                "média do treino + Σ φ(fator) = certeza",
+                "É o bloco que abre o detalhe de cada paciente, igual em todos os modelos e no "
+                "comitê. As 30 colunas viram 8 fatores: raio, perímetro e área, quase idênticos "
+                "entre si, formam o tamanho, e cada fator leva junto a sua média, o erro padrão "
+                "e o pior valor. O valor de Shapley de cada fator é exato, porque com 8 fatores "
+                "dá para percorrer todas as 256 combinações. A conta explica a certeza calibrada, "
+                "então fecha com a tabela, e parte da certeza média dos pacientes de treino (cerca "
+                "de 37,5%, a proporção de malignos). O comitê usa a média dos fatores dos membros, "
+                "o que é exato porque o valor de Shapley é linear.",
+            ),
+            (
+                "SHAP coluna a coluna",
+                "base + Σ φⱼ = P(Maligno) antes da calibração",
+                "A janela SHAP de cada modelo detalha as 30 colunas, uma a uma. Árvore e Random "
+                "Forest usam o TreeExplainer, que é exato e instantâneo. Os outros três usam o "
+                "KernelExplainer, que é aproximado e leva até 1,5 s por paciente. Essa janela "
+                "decompõe a saída do modelo antes da calibração, por isso o número dela não é a "
+                "certeza da tabela. Ela mostra os dois números, cada um com o seu nome.",
             ),
             (
                 "UMAP",

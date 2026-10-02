@@ -66,3 +66,21 @@ def test_export_patient_report_com_grafico_matplotlib(tmp_path):
     export_patient_report(str(destino), "Relatório de Teste", 1, "PACIENTE 1\nBenigno", figura=fig)
 
     assert destino.read_bytes().startswith(b'%PDF')
+
+
+def test_texto_de_detalhe_mantem_recuo_e_colunas():
+    """O Paragraph colapsa espaços; recuo e colunas do detalhe têm de sobreviver."""
+    from utils.pdf_report import _preservar_colunas
+
+    linha = " Textura           -14.4 pp  -> Benigno"
+    convertida = _preservar_colunas(linha)
+    assert convertida.startswith('&nbsp;Textura')
+    assert '&nbsp;' * 11 in convertida            # a coluna até o número
+    assert 'pp&nbsp;&nbsp;->' in convertida
+    # Espaço simples entre palavras continua quebrável.
+    assert _preservar_colunas("cada fator soma") == "cada fator soma"
+
+
+def test_sanitizacao_troca_os_sinais_da_regua():
+    from utils.pdf_report import _sanitizar
+    assert _sanitizar("Maligno: certeza ≥ 68.2%  ·  x ≤ 1") == "Maligno: certeza >= 68.2%  ·  x <= 1"

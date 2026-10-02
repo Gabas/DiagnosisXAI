@@ -18,10 +18,10 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from utils.ui import (ScrollableFrame, adicionar_barra_zoom, ajustar_ao_conteudo,
                       bind_treeview_mousewheel, figura_responsiva, itens_visiveis,
                       responsive_geometry)
-from views.report_common import cor_da_classe, PatientPDFExportMixin
+from views.report_common import cor_da_classe, FatoresPacienteMixin, PatientPDFExportMixin
 
 
-class LogisticReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
+class LogisticReportWindow(ctk.CTkToplevel, PatientPDFExportMixin, FatoresPacienteMixin):
     """
     Janela secundária com o relatório de explicabilidade da Regressão Logística.
 
@@ -37,12 +37,15 @@ class LogisticReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         Mapa do índice do paciente (str) para a coordenada (x, y) no gráfico.
     """
 
+    # Modelo cujos fatores (SHAP por fator) entram no detalhe de cada paciente.
+    MODELO_FATORES = "Regressão Logística"
+
     COR_MALIGNO = "#e74c3c"
     COR_BENIGNO = "#2ecc71"
     COR_REVISAR = "#e67e22"   # laranja: caso devolvido para revisão humana
     COR_FUNDO = "#2b2b2b"
 
-    def __init__(self, master, importancias: list, explicacoes: list, **kwargs):
+    def __init__(self, master, importancias: list, explicacoes: list, fatores=None, **kwargs):
         """
         Inicializa a janela de relatório da Regressão Logística.
 
@@ -54,10 +57,14 @@ class LogisticReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             Ranking de características com coeficiente e direção.
         explicacoes : list[dict]
             Explicações por paciente produzidas pelo explicador.
+        fatores : core.fatores.FatoresDoLote ou None
+            Provedor do bloco "Fatores que mais pesaram" de cada paciente.
+            None desliga o bloco (ex.: sessão do histórico sem o lote salvo).
         **kwargs
             Argumentos adicionais para o construtor do CTkToplevel.
         """
         super().__init__(master, **kwargs)
+        self._configurar_fatores(fatores)
         self.title("Relatório de Explicabilidade: Regressão Logística")
         responsive_geometry(self, 1060, 840)
         self.grid_columnconfigure(0, weight=1)
@@ -333,10 +340,7 @@ class LogisticReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         if not explicacao:
             return
 
-        self._detalhe.configure(state="normal")
-        self._detalhe.delete("1.0", "end")
-        self._detalhe.insert("1.0", self._formatar_detalhe(explicacao))
-        self._detalhe.configure(state="disabled")
+        self._escrever_detalhe(explicacao)
 
         if self._highlight is not None and chave in self._coords:
             self._highlight.set_offsets([self._coords[chave]])
@@ -378,7 +382,10 @@ class LogisticReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             linhas.append("  Recomenda-se revisão clínica deste paciente.")
 
         linhas.append("")
-        linhas.append("Características que mais pesaram nesta decisão:")
+        # Não confundir com o bloco "Fatores que mais pesaram" (SHAP), inserido
+        # acima pelo mixin: aqui são os termos w·x da própria soma z, coluna a
+        # coluna — exatos, mas na escala do logito, não da certeza.
+        linhas.append("Maiores termos da soma z = w·x + b (por coluna):")
         for c in e['contribuicoes'][:6]:
             seta = "↑ Maligno" if c['direcao'] == 'Maligno' else "↓ Benigno"
             posicao = "acima" if c['acima_media'] else "abaixo"

@@ -2,6 +2,7 @@
 Módulo contendo a interface em etapas para importação, padronização, predição e auditoria.
 """
 
+import copy
 import customtkinter as ctk
 from tkinter import filedialog, ttk
 import os
@@ -19,6 +20,7 @@ from core.decision import (
     ZONA_LIMITROFE,
     aplicar_a_explicacoes,
 )
+from core.fatores import FatoresDoLote
 from core.history_manager import HistoryManager
 from core.inference import ModelLoader
 from core.metrics import analise_critica, avaliar_modelos, ressalvas_do_lote
@@ -163,6 +165,7 @@ class PredictView(ctk.CTkFrame):
         self._shap_disponiveis = []
         self._opcoes_relatorio = {}
         self._shap_cache = {}
+        self._fatores_lote = None   # "Fatores que mais pesaram" do lote (core.fatores)
 
         self.model_loader = ModelLoader()
         self.predictor = PredictorEngine(self.model_loader)
@@ -798,7 +801,9 @@ class PredictView(ctk.CTkFrame):
         -------
         dict
             Mapa {tipo: dados} com os relatórios exatos e, quando disponíveis,
-            as chaves 'shap' (lote + modelos) e 'umap' (projeção + pacientes).
+            as chaves 'shap' (lote + modelos), 'umap' (projeção + pacientes)
+            e 'politica' (se a recusa estava ligada — usada pelo bloco de
+            fatores ao reabrir a sessão).
         """
         relatorio = dict(self._ultima_explicacao)  # relatórios exatos (cópia)
         fn = self.model_loader.feature_names
@@ -823,6 +828,12 @@ class PredictView(ctk.CTkFrame):
                     'pacientes': self._pacientes_diagnostico(),
                 }
 
+        # Estado da recusa no lote: ao reabrir a sessão, o bloco de fatores
+        # mostra a régua que de fato decidiu, não a configuração do momento.
+        if relatorio:
+            relatorio['politica'] = {
+                'adiar_incertos': bool(self.predictor.politica.adiar_incertos)}
+
         return relatorio
 
     def _reset_relatorio(self):
@@ -831,6 +842,7 @@ class PredictView(ctk.CTkFrame):
         self._shap_disponiveis = []
         self._opcoes_relatorio = {}
         self._probabilidades = {}
+        self._fatores_lote = None
         self.report_menu.configure(values=["—"], state="disabled")
         self.report_menu.set("—")
         self.btn_abrir_relatorio.configure(state="disabled")
@@ -916,6 +928,14 @@ class PredictView(ctk.CTkFrame):
 
         alvos = self._modelos_explicados(modelo_escolhido)
         explicadores = self.model_loader.explainers
+
+        # Fatores que mais pesaram (SHAP por fator), calculados sob demanda pelas
+        # janelas. A política vai copiada: se o usuário ligar ou desligar a
+        # recusa depois, a régua mostrada continua sendo a que decidiu o lote.
+        fn = self.model_loader.feature_names
+        self._fatores_lote = FatoresDoLote(
+            self.model_loader, self.df_padronizado[fn].values, self.df_limpo[fn].values,
+            list(self.df_padronizado.index), politica=copy.copy(self.predictor.politica))
 
         # Probabilidades calibradas de cada modelo explicado: é com elas que as
         # janelas do Passo 5 exibem a mesma decisão da tabela do Passo 3.
@@ -1123,7 +1143,8 @@ class PredictView(ctk.CTkFrame):
             dados = self._ultima_explicacao.get(tipo)
             if not dados:
                 return
-            self._report_windows[tipo] = self._CLASSES_RELATORIO[tipo](self, **dados)
+            self._report_windows[tipo] = self._CLASSES_RELATORIO[tipo](
+                self, **dados, fatores=self._fatores_lote)
 
     def _abrir_shap(self, key: str):
         """

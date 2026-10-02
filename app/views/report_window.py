@@ -10,10 +10,10 @@ from tkinter import ttk
 
 from utils.ui import (ScrollableFrame, ajustar_ao_conteudo, bind_treeview_mousewheel,
                       itens_visiveis, responsive_geometry)
-from views.report_common import PatientPDFExportMixin
+from views.report_common import FatoresPacienteMixin, PatientPDFExportMixin
 
 
-class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
+class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin, FatoresPacienteMixin):
     """
     Janela secundária que apresenta o relatório de explicabilidade da árvore.
 
@@ -29,11 +29,14 @@ class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         Mapa do índice do paciente (str) para a respectiva explicação.
     """
 
+    # Modelo cujos fatores (SHAP por fator) entram no detalhe de cada paciente.
+    MODELO_FATORES = "Árvore de Decisão"
+
     COR_MALIGNO = "#e74c3c"
     COR_BENIGNO = "#2ecc71"
     COR_REVISAR = "#e67e22"   # laranja: caso devolvido para revisão humana
 
-    def __init__(self, master, importancias: list, explicacoes: list, **kwargs):
+    def __init__(self, master, importancias: list, explicacoes: list, fatores=None, **kwargs):
         """
         Inicializa a janela de relatório.
 
@@ -45,10 +48,14 @@ class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             Ranking global de importância das características.
         explicacoes : list[dict]
             Explicações por paciente produzidas pelo DecisionTreeExplainer.
+        fatores : core.fatores.FatoresDoLote ou None
+            Provedor do bloco "Fatores que mais pesaram" de cada paciente.
+            None desliga o bloco (ex.: sessão do histórico sem o lote salvo).
         **kwargs
             Argumentos adicionais para o construtor do CTkToplevel.
         """
         super().__init__(master, **kwargs)
+        self._configurar_fatores(fatores)
         self.title("Relatório de Explicabilidade: Árvore de Decisão")
         responsive_geometry(self, 980, 740)
         self.grid_columnconfigure(0, weight=1)
@@ -197,7 +204,9 @@ class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         self._tree.heading("fatores", text="Principais fatores")
         self._tree.column("paciente", width=70, anchor="center", stretch=False)
         self._tree.column("diagnostico", width=90, anchor="center", stretch=False)
-        self._tree.column("fatores", width=300, anchor="w")
+        # 300 px fixos aqui espremiam a caixa de detalhe a ~29 caracteres, menos
+        # do que uma regra do caminho; 180 dá para os dois primeiros atributos.
+        self._tree.column("fatores", width=180, anchor="w")
         self._tree.grid(row=0, column=0, sticky="nsew")
 
         scrollbar = ctk.CTkScrollbar(tree_frame, command=self._tree.yview)
@@ -219,7 +228,7 @@ class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
 
         self._detalhe = ctk.CTkTextbox(
-            container, wrap="word", height=self._linhas_lista * 26,
+            container, wrap="word", height=self._linhas_lista * 26, width=430,
             font=ctk.CTkFont(family="Courier New", size=13),
         )
         self._detalhe.grid(row=1, column=1, sticky="nsew")
@@ -243,10 +252,7 @@ class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         explicacao = self._por_indice.get(selecao[0])
         if not explicacao:
             return
-        self._detalhe.configure(state="normal")
-        self._detalhe.delete("1.0", "end")
-        self._detalhe.insert("1.0", self._formatar_detalhe(explicacao))
-        self._detalhe.configure(state="disabled")
+        self._escrever_detalhe(explicacao)
 
     def _formatar_detalhe(self, e: dict) -> str:
         """
@@ -266,7 +272,10 @@ class ReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             f"PACIENTE {e['indice']}",
             f"Diagnóstico da IA: {e['classe']}",
             "",
-            "Características que mais pesaram nesta decisão:",
+            # Não confundir com o bloco "Fatores que mais pesaram" (SHAP), que o
+            # mixin insere acima: aqui é a variação da P(Maligno) a cada divisão
+            # do caminho percorrido por este paciente — exata, mas só desta árvore.
+            "Atributos no caminho (variação da P(Maligno) a cada divisão):",
         ]
         for c in e['contribuicoes'][:6]:
             seta = "↑ Maligno" if c['direcao'] == 'Maligno' else "↓ Benigno"

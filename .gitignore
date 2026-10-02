@@ -3,9 +3,10 @@
 venv/
 env/
 
-# IDEs
+# IDEs e assistentes
 .idea/
 .vscode/
+.claude/
 
 # Python
 __pycache__/

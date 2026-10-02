@@ -216,9 +216,13 @@ CONTEUDO = {
              "modelo. Assim, dá para ver quais biomarcadores empurraram o diagnóstico para "
              "Maligno ou Benigno, tanto globalmente quanto para um paciente específico."),
             ("No projeto",
-             "No notebook, o SHAP é aplicado sobre o Random Forest: o summary plot mostra a "
-             "importância global dos atributos, e o waterfall plot explica a decisão de um "
-             "paciente individual."),
+             "No app, todo relatório por modelo, inclusive o do comitê, abre o detalhe do "
+             "paciente com o bloco 'Fatores que mais pesaram'. Ele reúne as 30 colunas em 8 "
+             "fatores (raio, perímetro e área viram um só, o tamanho) e calcula o valor de "
+             "Shapley exato de cada um sobre a certeza calibrada. Por isso a soma fecha com a "
+             "tabela. A janela SHAP de cada modelo mostra o detalhe coluna a coluna. No "
+             "notebook, o summary plot mostra a importância global dos atributos de cada "
+             "modelo."),
         ],
         "codigo":
             "import shap\n\n"

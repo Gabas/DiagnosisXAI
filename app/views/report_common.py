@@ -1,11 +1,13 @@
 """
 Funcionalidade compartilhada entre as janelas de relatório de explicabilidade
-(Árvore, Regressão Logística, KNN, Random Forest e SVM).
+(Árvore, Regressão Logística, KNN, Random Forest, SVM e Comitê).
 """
 
+import tkinter
 from tkinter import filedialog, messagebox
 
 from core.decision import ROTULO_MALIGNO, ROTULO_REVISAR
+from core.fatores import linhas_fatores
 from utils.pdf_report import export_patient_report, resolve_reports_dir
 
 COR_MALIGNO = "#e74c3c"
@@ -58,6 +60,11 @@ class PatientPDFExportMixin:
         if not caminho:
             return
 
+        # O bloco de fatores pode ainda estar sendo calculado: o PDF não pode
+        # sair com "calculando…" no lugar dele.
+        if hasattr(self, "_garantir_fatores"):
+            self._garantir_fatores()
+
         try:
             if hasattr(self, "_figuras_pdf"):
                 figura = self._figuras_pdf()
@@ -70,3 +77,135 @@ class PatientPDFExportMixin:
             messagebox.showinfo("Exportado", f"Relatório salvo em:\n{caminho}", parent=self)
         except Exception as e:
             messagebox.showerror("Erro ao exportar", str(e), parent=self)
+
+
+class FatoresPacienteMixin:
+    """
+    Põe, no detalhe de cada paciente, o bloco "Fatores que mais pesaram".
+
+    É o que deixa a explicação por fator igual em todas as janelas por modelo:
+    o bloco entra logo abaixo do diagnóstico (depois do primeiro parágrafo do
+    texto de ``_formatar_detalhe``), no mesmo formato para todos.
+
+    O cálculo leva de frações de segundo a ~6 s (comitê), então não pode travar
+    a janela: o detalhe aparece na hora, com uma linha "calculando…", e o bloco
+    entra quando fica pronto — se o mesmo paciente ainda estiver selecionado.
+    O trabalho roda numa thread do ``FatoresDoLote``; esta classe só consulta o
+    resultado a partir do laço do Tk, que nunca é tocado de outra thread.
+
+    Pressupõe ``self._detalhe`` (CTkTextbox) e ``self._formatar_detalhe(e)``.
+    A subclasse declara ``MODELO_FATORES``, chama ``_configurar_fatores`` no
+    construtor e ``_escrever_detalhe(e)`` ao selecionar um paciente.
+    """
+
+    MODELO_FATORES = None
+    _INTERVALO_MS = 200
+
+    def _configurar_fatores(self, fatores):
+        """
+        Guarda o provedor de fatores do lote (``core.fatores.FatoresDoLote``).
+
+        Parameters
+        ----------
+        fatores : FatoresDoLote ou None
+            None quando não há como calcular (ex.: sessão antiga do histórico
+            sem o lote salvo) — o detalhe sai sem o bloco, como antes.
+        """
+        self._fatores = fatores
+        self._paciente_em_exibicao = None
+
+    def _fatores_ativos(self) -> bool:
+        """True se esta janela tem como calcular os fatores do seu modelo."""
+        fatores = getattr(self, "_fatores", None)
+        return (fatores is not None and self.MODELO_FATORES is not None
+                and fatores.disponivel(self.MODELO_FATORES))
+
+    def _texto_com_fatores(self, e: dict, bloco: str) -> str:
+        """Insere o bloco logo após o primeiro parágrafo (o do diagnóstico)."""
+        texto = self._formatar_detalhe(e)
+        if not bloco:
+            return texto
+        cabeca, separador, resto = texto.partition("\n\n")
+        if not separador:
+            return f"{texto}\n\n{bloco}"
+        return f"{cabeca}\n\n{bloco}\n\n{resto}"
+
+    def _bloco(self, e: dict, resultado=None, erro=None) -> str:
+        """Texto do bloco no estado atual: pronto, com erro ou calculando."""
+        if resultado is not None:
+            modelo, rotulo = self.MODELO_FATORES, e.get('classe')
+            return "\n".join(linhas_fatores(
+                resultado, modelo, rotulo,
+                regra=self._fatores.regra(modelo),
+                corte=self._fatores.corte(modelo, rotulo)))
+        if erro is not None:
+            return f"Fatores que mais pesaram: não foi possível calcular ({erro})."
+        return "Fatores que mais pesaram: calculando… (alguns segundos)"
+
+    def _substituir_detalhe(self, texto: str):
+        """Troca o conteúdo da caixa de detalhe (que fica somente leitura)."""
+        self._detalhe.configure(state="normal")
+        self._detalhe.delete("1.0", "end")
+        self._detalhe.insert("1.0", texto)
+        self._detalhe.configure(state="disabled")
+
+    def _escrever_detalhe(self, e: dict):
+        """
+        Mostra o detalhe do paciente e, se preciso, agenda o cálculo dos fatores.
+
+        Parameters
+        ----------
+        e : dict
+            Explicação do paciente selecionado (precisa de 'indice').
+        """
+        self._paciente_em_exibicao = e
+        if not self._fatores_ativos():
+            self._substituir_detalhe(self._formatar_detalhe(e))
+            return
+
+        futuro = self._fatores.agendar(self.MODELO_FATORES, e['indice'])
+        if futuro.done():
+            self._renderizar_quando_pronto(e, futuro)
+            return
+        self._substituir_detalhe(self._texto_com_fatores(e, self._bloco(e)))
+        self.after(self._INTERVALO_MS, lambda: self._acompanhar(e, futuro))
+
+    def _acompanhar(self, e: dict, futuro):
+        """Consulta o cálculo pelo laço do Tk até ele terminar."""
+        try:
+            if not self.winfo_exists():
+                return
+        except tkinter.TclError:
+            return    # a janela foi fechada com o cálculo em andamento
+        if not futuro.done():
+            self.after(self._INTERVALO_MS, lambda: self._acompanhar(e, futuro))
+            return
+        if self._paciente_em_exibicao is e:
+            self._renderizar_quando_pronto(e, futuro)
+
+    def _renderizar_quando_pronto(self, e: dict, futuro):
+        """Redesenha o detalhe com o bloco final (ou com o erro do cálculo)."""
+        try:
+            bloco = self._bloco(e, resultado=futuro.result())
+        except Exception as erro:
+            bloco = self._bloco(e, erro=erro)
+        self._substituir_detalhe(self._texto_com_fatores(e, bloco))
+
+    def _garantir_fatores(self):
+        """
+        Espera o cálculo do paciente exibido terminar e atualiza o detalhe.
+
+        Chamado antes de exportar o PDF, que copia o texto da caixa de detalhe.
+        Bloqueia a janela por alguns segundos no pior caso — aceitável numa
+        ação explícita de exportação, e melhor do que um PDF incompleto.
+        """
+        e = getattr(self, "_paciente_em_exibicao", None)
+        if e is None or not self._fatores_ativos():
+            return
+        futuro = self._fatores.agendar(self.MODELO_FATORES, e['indice'])
+        try:
+            futuro.result(timeout=120)
+        except Exception:
+            pass      # o erro aparece no próprio bloco, via _renderizar_quando_pronto
+        if futuro.done():
+            self._renderizar_quando_pronto(e, futuro)

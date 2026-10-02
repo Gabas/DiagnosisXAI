@@ -45,10 +45,10 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from utils.ui import (ScrollableFrame, adicionar_barra_zoom, ajustar_ao_conteudo,
                       bind_treeview_mousewheel, figura_responsiva, itens_visiveis,
                       responsive_geometry)
-from views.report_common import cor_da_classe, PatientPDFExportMixin
+from views.report_common import cor_da_classe, FatoresPacienteMixin, PatientPDFExportMixin
 
 
-class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
+class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin, FatoresPacienteMixin):
     """
     Janela secundária com o relatório de explicabilidade do SVM (kernel RBF).
 
@@ -72,6 +72,9 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         mapa volta a colorir por classe e o painel da margem omite o fundo.
     """
 
+    # Modelo cujos fatores (SHAP por fator) entram no detalhe de cada paciente.
+    MODELO_FATORES = "SVM"
+
     COR_MALIGNO = "#e74c3c"
     COR_BENIGNO = "#2ecc71"
     COR_REVISAR = "#e67e22"   # laranja: caso devolvido para revisão humana
@@ -87,7 +90,7 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
     Z_MAX = 3.0   # saturação da escala: |z| > 3 é decisão folgada dos dois lados
 
     def __init__(self, master, importancias: list, explicacoes: list,
-                 contexto: dict, batch_2d=None, **kwargs):
+                 contexto: dict, batch_2d=None, fatores=None, **kwargs):
         """
         Inicializa a janela de relatório do SVM.
 
@@ -109,10 +112,14 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
             Posição de cada paciente do lote no embedding (n_lote × 2), na
             mesma ordem de ``explicacoes``. None se o embedding UMAP não
             estiver disponível.
+        fatores : core.fatores.FatoresDoLote ou None
+            Provedor do bloco "Fatores que mais pesaram" de cada paciente.
+            None desliga o bloco (ex.: sessão do histórico sem o lote salvo).
         **kwargs
             Argumentos adicionais para o construtor do CTkToplevel.
         """
         super().__init__(master, **kwargs)
+        self._configurar_fatores(fatores)
         self.title("Relatório de Explicabilidade: SVM")
         responsive_geometry(self, 1060, 860)
         self.grid_columnconfigure(0, weight=1)
@@ -672,10 +679,7 @@ class SVMReportWindow(ctk.CTkToplevel, PatientPDFExportMixin):
         if not explicacao:
             return
 
-        self._detalhe.configure(state="normal")
-        self._detalhe.delete("1.0", "end")
-        self._detalhe.insert("1.0", self._formatar_detalhe(explicacao))
-        self._detalhe.configure(state="disabled")
+        self._escrever_detalhe(explicacao)
 
         self._destacar(explicacao, selecao[0])
 
