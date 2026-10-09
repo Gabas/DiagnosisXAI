@@ -1400,7 +1400,8 @@ class PredictView(ctk.CTkFrame):
 
         A Regressão Logística expõe coeficientes assinados (dicts com
         'feature'/'coeficiente'/'direcao'), enquanto os demais expõem
-        importância por permutação/Gini (tuplas (nome, fração de 0 a 1) —
+        importância por permutação ou por redução de entropia (tuplas (nome,
+        fração de 0 a 1) —
         cada um com sua própria unidade, por isso a formatação é decidida
         aqui e não no gerador de PDF.
 

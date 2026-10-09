@@ -1,7 +1,8 @@
 """
 Módulo contendo a janela de relatório de explicabilidade do Random Forest.
 
-Apresenta a importância global (Gini) e, por paciente, o consenso da floresta:
+Apresenta a importância global (redução média de entropia) e, por paciente, o
+consenso da floresta:
 quantas das N árvores votaram em cada classe e a distribuição das probabilidades
 que cada árvore atribuiu — mostrando se a decisão é um consenso forte ou uma
 maioria apertada. Complementa o relatório SHAP do RF (que detalha atributos).
@@ -24,7 +25,7 @@ class RandomForestReportWindow(ctk.CTkToplevel, PatientPDFExportMixin, FatoresPa
     """
     Janela secundária com o relatório de explicabilidade do Random Forest.
 
-    Reúne o ranking de biomarcadores (importância Gini), o consenso das árvores
+    Reúne o ranking de biomarcadores (redução de entropia), o consenso das árvores
     por paciente (voto duro + histograma das probabilidades) e a área
     mestre-detalhe. Selecionar um paciente atualiza o histograma de consenso.
 
@@ -54,7 +55,7 @@ class RandomForestReportWindow(ctk.CTkToplevel, PatientPDFExportMixin, FatoresPa
         master : ctk.CTkBaseClass
             Widget que originou o relatório.
         importancias : list[tuple[str, float]]
-            Ranking de importância global (Gini).
+            Ranking de importância global (redução média de entropia).
         explicacoes : list[dict]
             Explicações por paciente produzidas pelo RandomForestExplainer.
         contexto : dict
@@ -121,7 +122,11 @@ class RandomForestReportWindow(ctk.CTkToplevel, PatientPDFExportMixin, FatoresPa
 
     def _build_global(self, importancias: list):
         """
-        Constrói o painel de importância global (Gini).
+        Constrói o painel de importância global (redução média de entropia).
+
+        O título diz "entropia" e não "Gini" porque é a entropia o critério
+        de impureza desta floresta (``criterion='entropy'``) — a importância
+        nativa do scikit-learn mede a redução do critério que a árvore usa.
 
         Parameters
         ----------
@@ -133,11 +138,11 @@ class RandomForestReportWindow(ctk.CTkToplevel, PatientPDFExportMixin, FatoresPa
         frame.grid_columnconfigure(1, weight=1)
 
         ctk.CTkLabel(
-            frame, text="Biomarcadores mais relevantes (Gini)",
+            frame, text="Biomarcadores mais relevantes (redução de entropia)",
             font=ctk.CTkFont(size=15, weight="bold"),
         ).grid(row=0, column=0, columnspan=3, sticky="w", padx=16, pady=(12, 2))
         ctk.CTkLabel(
-            frame, text="Redução total de impureza atribuída a cada atributo na floresta",
+            frame, text="Quanto cada atributo reduz a entropia nas divisões da floresta",
             font=ctk.CTkFont(size=11), text_color="gray",
         ).grid(row=1, column=0, columnspan=3, sticky="w", padx=16, pady=(0, 8))
 

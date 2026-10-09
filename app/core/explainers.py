@@ -507,8 +507,11 @@ class RandomForestExplainer:
     explicador expõe, por paciente, quantas árvores votaram em cada classe (voto
     duro) e a distribuição das probabilidades das árvores — o análogo, para o
     ensemble, do voto dos vizinhos no KNN: mostra se a decisão é um consenso
-    forte ou uma maioria apertada. Fornece ainda a importância global (redução
-    de impureza / Gini agregada pela floresta).
+    forte ou uma maioria apertada. Fornece ainda a importância global: a
+    redução média de impureza (MDI) que cada atributo produz nas divisões da
+    floresta. Como a floresta usa ``criterion='entropy'``, essa impureza é a
+    entropia, e não o índice de Gini, nome com que esta importância costuma
+    ser chamada.
 
     Complementa o relatório SHAP do RF (que detalha a contribuição de cada
     atributo), focando na estrutura de votação do ensemble.
@@ -544,7 +547,7 @@ class RandomForestExplainer:
 
     def global_importances(self, top_n: int = 10) -> list[tuple[str, float]]:
         """
-        Retorna o ranking global de importância (redução de impureza / Gini).
+        Retorna o ranking global de importância (redução média de entropia, MDI).
 
         Parameters
         ----------

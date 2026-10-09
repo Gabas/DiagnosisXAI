@@ -526,8 +526,9 @@ cada um e o peso que teve no voto. Zoom e pan disponíveis.
 
 **Random Forest — consenso das árvores**
 
-Importância por **Gini** (redução de impureza agregada pela floresta) e a distribuição
-da votação das 500 árvores para o paciente selecionado.
+Importância por **redução média de entropia** (MDI: o quanto cada atributo reduz a
+impureza nas divisões; a floresta usa o critério de entropia, não o de Gini) e a
+distribuição da votação das 500 árvores para o paciente selecionado.
 
 <img src="docs/img/12-xai-randomforest.png" alt="Relatório do Random Forest">
 

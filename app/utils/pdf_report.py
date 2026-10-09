@@ -130,7 +130,7 @@ def export_batch_report(path: str, meta: dict, df, importancias_por_modelo: dict
     importancias_por_modelo : dict
         {nome_do_modelo: [(biomarcador, valor_formatado), ...]} — uma seção
         por modelo com relatório de importância disponível. ``valor_formatado``
-        já vem como texto (ex.: "3.01%" para importância por permutação/Gini,
+        já vem como texto (ex.: "3.01%" para importância por permutação ou por redução de entropia,
         "+1.40 (Maligno)" para coeficiente de regressão) — cada tipo de
         explicador tem sua própria unidade e não deve ser normalizado aqui.
     auditoria : dict ou None
