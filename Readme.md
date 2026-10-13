@@ -330,9 +330,10 @@ membro decide sozinho. A Árvore de Decisão fica de fora por não ter versão c
 
 A lógica é de diluição de erro: quando um membro se engana isoladamente, os outros três
 puxam a média de volta. O preço é custo computacional (executa quatro modelos por lote) e
-a ausência de um explicador próprio, a justificativa precisa ser montada a partir dos
-relatórios dos membros, e quando eles discordam entre si não há narrativa única a
-apresentar. O relatório do comitê expõe exatamente isso.
+uma explicação que também é média: os [fatores que mais pesaram](#fatores-que-mais-pesaram--igual-em-todos-os-modelos)
+no comitê são a média exata dos fatores dos membros, e quando eles discordam entre si a
+média esconde a divergência. Por isso o relatório do comitê mostra, ao lado dos fatores,
+a posição de cada membro e o motivo de cada devolução.
 
 Todos os modelos são avaliados com Acurácia, Sensibilidade, Especificidade, F1, ROC-AUC e
 PR-AUC.
@@ -613,7 +614,8 @@ vêm acompanhadas do **intervalo de confiança de Wilson (95%)**.
 > comparar coisas diferentes, por isso a cobertura é a primeira coluna da tabela, e a
 > leitura crítica repete a ressalva por extenso.
 
-No modo **Todos (Comparação)**, a auditoria avalia os seis modelos lado a lado:
+No modo **Todos (Comparação)**, a auditoria avalia os cinco modelos individuais lado a
+lado (o comitê é auditado à parte, escolhendo-o no Passo 3, como na imagem anterior):
 
 <p align="center">
   <img src="docs/img/21-comparacao-metricas.png" alt="Comparação entre os modelos" width="820">

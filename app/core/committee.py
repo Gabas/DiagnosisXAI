@@ -1,11 +1,12 @@
 """
 Explicabilidade do comitê de voto suave.
 
-O comitê é o único modelo do app sem explicador próprio: ele não tem
-coeficientes, vizinhos, regras nem vetores de suporte — a decisão dele é uma
-média das probabilidades calibradas de quatro modelos. Explicá-lo, portanto,
-não é abrir um modelo: é mostrar **como os quatro chegaram (ou não chegaram) a
-um acordo**.
+O comitê não tem um mecanismo interno a expor: não tem coeficientes, vizinhos,
+regras nem vetores de suporte — a decisão dele é uma média das probabilidades
+calibradas de quatro modelos. *O que* pesou na decisão vem do bloco "Fatores
+que mais pesaram" (``core.fatores``), que para o comitê é a média exata dos
+fatores dos membros. Este módulo responde à outra pergunta: **como os quatro
+chegaram (ou não chegaram) a um acordo**.
 
 Isso importa sobretudo quando a recusa está ligada. "Revisar" não tem um motivo
 só, e a média sozinha não os distingue — mas cada um pede uma conduta diferente:

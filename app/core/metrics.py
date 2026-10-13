@@ -94,10 +94,10 @@ PERFIL_MODELO = {
                  "isolado de um membro é diluído pelos demais, o que produz a decisão mais "
                  "estável do conjunto e, no limiar calibrado, a melhor combinação de "
                  "sensibilidade e especificidade entre todas as opções do app",
-        'limite': "não possui explicador próprio: a justificativa precisa ser montada a partir "
-                  "dos relatórios dos membros, e quando eles discordam entre si não há uma "
-                  "narrativa única a apresentar ao clínico. É também a opção mais cara, pois "
-                  "executa os quatro modelos a cada lote",
+        'limite': "os fatores que mais pesaram são a média exata dos fatores dos quatro "
+                  "membros, e por isso, quando eles discordam entre si, a média esconde a "
+                  "divergência: nesses casos vale abrir o relatório de cada membro. É também "
+                  "a opção mais cara, pois executa os quatro modelos a cada lote",
     },
 }
 

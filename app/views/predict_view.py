@@ -853,9 +853,10 @@ class PredictView(ctk.CTkFrame):
         Modelos cujos relatórios devem ser preparados para a escolha do Passo 3.
 
         Um único modelo explica a si mesmo; "Todos (Comparação)" explica os
-        cinco; e o comitê explica cada um dos seus membros — é assim que a
-        decisão do voto suave fica auditável, já que o comitê não tem
-        explicador próprio: quem decidiu foram os membros.
+        cinco; e o comitê, além do próprio relatório (concordância dos membros
+        e fatores que mais pesaram, a média exata dos fatores deles), prepara
+        o de cada membro — quem decidiu foram os membros, e é no relatório de
+        cada um que se vê o porquê quando eles discordam.
 
         Parameters
         ----------
